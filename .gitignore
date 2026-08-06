@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Local models and user-generated runtime data
+models/
+data/
+
+# Build artifacts
+build/
+dist/
+

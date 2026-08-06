@@ -1,0 +1,20 @@
+QMainWindow {
+    background: #f5f7fa;
+}
+
+QPlainTextEdit, QComboBox, QDoubleSpinBox {
+    background: white;
+    border: 1px solid #c8d0da;
+    border-radius: 4px;
+    padding: 6px;
+}
+
+QPushButton {
+    padding: 7px 14px;
+}
+
+#statusLabel {
+    padding: 8px;
+    color: #334155;
+}
+

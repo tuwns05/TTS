@@ -1,0 +1,34 @@
+application:
+  name: "Vietnamese TTS Desktop"
+  environment: "development"
+
+paths:
+  models_dir: "models"
+  data_dir: "data"
+  cache_dir: "data/cache"
+  logs_dir: "data/logs"
+
+tts:
+  default_engine: "fake"
+  max_text_length: 10000
+
+audio:
+  default_speed: 1.0
+  default_pitch_semitones: 0.0
+  default_volume_db: 0.0
+  default_sample_rate: 24000
+
+# Đây là ngưỡng khởi đầu có thể điều chỉnh, không phải thông số hiệu năng đã được chứng minh.
+hardware_recommendation:
+  high_tier:
+    min_ram_gb: 16
+    min_physical_cores: 6
+    min_vram_gb: 6
+  medium_tier:
+    min_ram_gb: 8
+    min_physical_cores: 4
+
+logging:
+  level: "INFO"
+  retention_days: 7
+

@@ -1,0 +1,230 @@
+"""Load, validate and normalize application settings."""
+
+from __future__ import annotations
+
+import os
+import sys
+from copy import deepcopy
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Mapping
+
+import yaml
+
+from vntts.domain.exceptions import ConfigurationError
+from vntts.domain.hardware.models import HardwareRecommendationSettings, TierSettings
+
+
+_SAFE_DEFAULTS: dict[str, object] = {
+    "application": {"name": "Vietnamese TTS Desktop", "environment": "development"},
+    "paths": {
+        "models_dir": "models",
+        "data_dir": "data",
+        "cache_dir": "data/cache",
+        "logs_dir": "data/logs",
+    },
+    "tts": {"default_engine": "fake", "max_text_length": 10_000},
+    "audio": {
+        "default_speed": 1.0,
+        "default_pitch_semitones": 0.0,
+        "default_volume_db": 0.0,
+        "default_sample_rate": 24_000,
+    },
+    "hardware_recommendation": {
+        "high_tier": {"min_ram_gb": 16, "min_physical_cores": 6, "min_vram_gb": 6},
+        "medium_tier": {"min_ram_gb": 8, "min_physical_cores": 4},
+    },
+    "logging": {"level": "INFO", "retention_days": 7},
+}
+
+
+@dataclass(frozen=True)
+class ApplicationSettings:
+    """Application identity and runtime environment."""
+
+    name: str
+    environment: str
+
+
+@dataclass(frozen=True)
+class PathSettings:
+    """Normalized local storage paths."""
+
+    models_dir: Path
+    data_dir: Path
+    cache_dir: Path
+    logs_dir: Path
+
+
+@dataclass(frozen=True)
+class TTSSettings:
+    """Cross-engine synthesis limits."""
+
+    default_engine: str
+    max_text_length: int
+
+
+@dataclass(frozen=True)
+class AudioSettings:
+    """Default audio controls shown by the UI."""
+
+    default_speed: float
+    default_pitch_semitones: float
+    default_volume_db: float
+    default_sample_rate: int
+
+
+@dataclass(frozen=True)
+class LoggingSettings:
+    """Logging verbosity and retention policy."""
+
+    level: str
+    retention_days: int
+
+
+@dataclass(frozen=True)
+class Settings:
+    """Validated application configuration."""
+
+    application: ApplicationSettings
+    paths: PathSettings
+    tts: TTSSettings
+    audio: AudioSettings
+    hardware_recommendation: HardwareRecommendationSettings
+    logging: LoggingSettings
+
+
+def _application_data_root() -> Path:
+    override = os.getenv("VNTTS_APP_DATA_DIR")
+    if override:
+        return Path(override).expanduser()
+    if sys.platform == "win32":
+        base = Path(os.getenv("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+    elif sys.platform == "darwin":
+        base = Path.home() / "Library" / "Application Support"
+    else:
+        base = Path(os.getenv("XDG_DATA_HOME", Path.home() / ".local" / "share"))
+    return base / "VietnameseTTSDesktop"
+
+
+def _merge(base: dict[str, object], override: Mapping[str, object]) -> dict[str, object]:
+    merged = deepcopy(base)
+    for key, value in override.items():
+        current = merged.get(key)
+        if isinstance(current, dict) and isinstance(value, Mapping):
+            merged[key] = _merge(current, value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def _section(config: Mapping[str, object], name: str) -> Mapping[str, object]:
+    value = config.get(name)
+    if not isinstance(value, Mapping):
+        raise ConfigurationError(f"Mục cấu hình '{name}' phải là một mapping.")
+    return value
+
+
+def _number(value: object, label: str, *, positive: bool = False) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ConfigurationError(f"'{label}' phải là số.")
+    numeric = float(value)
+    if positive and numeric <= 0:
+        raise ConfigurationError(f"'{label}' phải lớn hơn 0.")
+    return numeric
+
+
+def _resolve_path(value: object, root: Path, label: str) -> Path:
+    if not isinstance(value, str) or not value.strip():
+        raise ConfigurationError(f"'{label}' phải là đường dẫn hợp lệ.")
+    path = Path(value).expanduser()
+    return path.resolve() if path.is_absolute() else (root / path).resolve()
+
+
+def load_settings(config_path: Path | None = None, *, create_directories: bool = True) -> Settings:
+    """Load YAML settings, apply environment overrides and create local directories."""
+
+    path = config_path or Path(__file__).with_name("default_config.yaml")
+    try:
+        loaded = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError) as exc:
+        raise ConfigurationError(f"Không thể đọc cấu hình: {path}") from exc
+    if not isinstance(loaded, Mapping):
+        raise ConfigurationError("Nội dung cấu hình gốc phải là một mapping.")
+
+    config = _merge(_SAFE_DEFAULTS, loaded)
+    app = _section(config, "application")
+    paths = _section(config, "paths")
+    tts = _section(config, "tts")
+    audio = _section(config, "audio")
+    hardware = _section(config, "hardware_recommendation")
+    high = _section(hardware, "high_tier")
+    medium = _section(hardware, "medium_tier")
+    logging_config = _section(config, "logging")
+
+    app_root = _application_data_root()
+    path_overrides = {
+        "models_dir": os.getenv("VNTTS_MODELS_DIR"),
+        "data_dir": os.getenv("VNTTS_DATA_DIR"),
+        "cache_dir": os.getenv("VNTTS_CACHE_DIR"),
+        "logs_dir": os.getenv("VNTTS_LOGS_DIR"),
+    }
+    normalized_paths: dict[str, Path] = {}
+    for key in path_overrides:
+        normalized_paths[key] = _resolve_path(
+            path_overrides[key] or paths.get(key), app_root, f"paths.{key}"
+        )
+
+    application_name = app.get("name")
+    environment = os.getenv("VNTTS_ENVIRONMENT") or app.get("environment")
+    default_engine = tts.get("default_engine")
+    if not isinstance(application_name, str) or not application_name.strip():
+        raise ConfigurationError("Tên ứng dụng không được để trống.")
+    if not isinstance(environment, str) or not environment.strip():
+        raise ConfigurationError("Môi trường ứng dụng không được để trống.")
+    if not isinstance(default_engine, str) or not default_engine.strip():
+        raise ConfigurationError("Engine mặc định không được để trống.")
+
+    max_text_length = int(_number(tts.get("max_text_length"), "tts.max_text_length", positive=True))
+    sample_rate = int(_number(audio.get("default_sample_rate"), "audio.default_sample_rate", positive=True))
+    retention_days = int(_number(logging_config.get("retention_days"), "logging.retention_days", positive=True))
+    level_value = os.getenv("VNTTS_LOG_LEVEL") or logging_config.get("level")
+    if not isinstance(level_value, str) or not level_value.strip():
+        raise ConfigurationError("Mức logging không hợp lệ.")
+
+    settings = Settings(
+        application=ApplicationSettings(application_name, environment),
+        paths=PathSettings(**normalized_paths),
+        tts=TTSSettings(default_engine, max_text_length),
+        audio=AudioSettings(
+            _number(audio.get("default_speed"), "audio.default_speed"),
+            _number(audio.get("default_pitch_semitones"), "audio.default_pitch_semitones"),
+            _number(audio.get("default_volume_db"), "audio.default_volume_db"),
+            sample_rate,
+        ),
+        hardware_recommendation=HardwareRecommendationSettings(
+            high_tier=TierSettings(
+                _number(high.get("min_ram_gb"), "high_tier.min_ram_gb", positive=True),
+                int(_number(high.get("min_physical_cores"), "high_tier.min_physical_cores", positive=True)),
+                _number(high.get("min_vram_gb"), "high_tier.min_vram_gb", positive=True),
+            ),
+            medium_tier=TierSettings(
+                _number(medium.get("min_ram_gb"), "medium_tier.min_ram_gb", positive=True),
+                int(_number(medium.get("min_physical_cores"), "medium_tier.min_physical_cores", positive=True)),
+            ),
+        ),
+        logging=LoggingSettings(level_value.upper(), retention_days),
+    )
+
+    if create_directories:
+        try:
+            for directory in {
+                settings.paths.models_dir,
+                settings.paths.data_dir,
+                settings.paths.cache_dir,
+                settings.paths.logs_dir,
+            }:
+                directory.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise ConfigurationError("Không thể tạo thư mục dữ liệu ứng dụng.") from exc
+    return settings

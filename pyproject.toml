@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vietnamese-tts-desktop"
+version = "0.1.0"
+description = "Ứng dụng desktop TTS tiếng Việt hoạt động offline"
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "PySide6>=6.7,<7",
+    "numpy>=1.26,<3",
+    "psutil>=5.9,<8",
+    "py-cpuinfo>=9,<10",
+    "loguru>=0.7,<1",
+    "PyYAML>=6,<7",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8,<10",
+    "pytest-qt>=4.4,<5",
+]
+
+[project.scripts]
+vntts = "vntts.main:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+vntts = [
+    "config/*.yaml",
+    "presentation/resources/*.qss",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-ra"
+
