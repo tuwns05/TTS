@@ -1,2 +1,2 @@
-# Install the editable package and its Phase 1 dependencies from pyproject.toml.
+# Install the editable package and engine-neutral desktop dependencies.
 -e .

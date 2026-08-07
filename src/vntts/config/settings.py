@@ -11,19 +11,24 @@ from typing import Mapping
 
 import yaml
 
-from vntts.domain.exceptions import ConfigurationError
-from vntts.domain.hardware.models import HardwareRecommendationSettings, TierSettings
+from vntts.db.models import HardwareRecommendationSettings, TierSettings
+from vntts.utils.exceptions import ConfigurationError
 
 
 _SAFE_DEFAULTS: dict[str, object] = {
     "application": {"name": "Vietnamese TTS Desktop", "environment": "development"},
     "paths": {
+        "bundled_models_dir": "resources/models",
         "models_dir": "models",
         "data_dir": "data",
         "cache_dir": "data/cache",
         "logs_dir": "data/logs",
     },
-    "tts": {"default_engine": "fake", "max_text_length": 10_000},
+    "tts": {
+        "default_engine": "fake",
+        "production_default_engine": "vieneu-v3",
+        "max_text_length": 10_000,
+    },
     "audio": {
         "default_speed": 1.0,
         "default_pitch_semitones": 0.0,
@@ -50,6 +55,7 @@ class ApplicationSettings:
 class PathSettings:
     """Normalized local storage paths."""
 
+    bundled_models_dir: Path
     models_dir: Path
     data_dir: Path
     cache_dir: Path
@@ -107,6 +113,14 @@ def _application_data_root() -> Path:
     return base / "VietnameseTTSDesktop"
 
 
+def _installation_root() -> Path:
+    """Return the read-only application root in source and frozen builds."""
+
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parents[3]
+
+
 def _merge(base: dict[str, object], override: Mapping[str, object]) -> dict[str, object]:
     merged = deepcopy(base)
     for key, value in override.items():
@@ -144,7 +158,7 @@ def _resolve_path(value: object, root: Path, label: str) -> Path:
 def load_settings(config_path: Path | None = None, *, create_directories: bool = True) -> Settings:
     """Load YAML settings, apply environment overrides and create local directories."""
 
-    path = config_path or Path(__file__).with_name("default_config.yaml")
+    path = config_path or Path(__file__).with_name("default.yaml")
     try:
         loaded = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     except (OSError, yaml.YAMLError) as exc:
@@ -174,10 +188,21 @@ def load_settings(config_path: Path | None = None, *, create_directories: bool =
         normalized_paths[key] = _resolve_path(
             path_overrides[key] or paths.get(key), app_root, f"paths.{key}"
         )
+    normalized_paths["bundled_models_dir"] = _resolve_path(
+        os.getenv("VNTTS_BUNDLED_MODELS_DIR") or paths.get("bundled_models_dir"),
+        _installation_root(),
+        "paths.bundled_models_dir",
+    )
 
     application_name = app.get("name")
     environment = os.getenv("VNTTS_ENVIRONMENT") or app.get("environment")
-    default_engine = tts.get("default_engine")
+    default_engine = os.getenv("VNTTS_DEFAULT_ENGINE")
+    if default_engine is None:
+        default_engine = (
+            tts.get("production_default_engine")
+            if str(environment).strip().lower() == "production"
+            else tts.get("default_engine")
+        )
     if not isinstance(application_name, str) or not application_name.strip():
         raise ConfigurationError("Tên ứng dụng không được để trống.")
     if not isinstance(environment, str) or not environment.strip():

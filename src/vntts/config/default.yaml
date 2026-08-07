@@ -3,6 +3,8 @@ application:
   environment: "development"
 
 paths:
+  # Read-only in a packaged build; VieNeu v3 is bundled here for offline startup.
+  bundled_models_dir: "resources/models"
   models_dir: "models"
   data_dir: "data"
   cache_dir: "data/cache"
@@ -10,6 +12,7 @@ paths:
 
 tts:
   default_engine: "fake"
+  production_default_engine: "vieneu-v3"
   max_text_length: 10000
 
 audio:
@@ -31,4 +34,3 @@ hardware_recommendation:
 logging:
   level: "INFO"
   retention_days: 7
-

@@ -6,11 +6,9 @@ import time
 
 from loguru import logger
 
-from vntts.application.services.engine_factory import EngineFactory
-from vntts.application.services.engine_registry import EngineRegistry
-from vntts.domain.exceptions import AppError, EngineLoadError, SynthesisError, ValidationError
-from vntts.domain.tts.engine import BaseTTSEngine
-from vntts.domain.tts.models import SynthesisRequest, SynthesisResult, VoiceInfo
+from vntts.db.models import SynthesisRequest, SynthesisResult, VoiceInfo
+from vntts.engines.factory import EngineFactory, EngineLifecycleManager, EngineRegistry
+from vntts.utils.exceptions import AppError, EngineLoadError, SynthesisError, ValidationError
 
 
 class SynthesizeSpeech:
@@ -22,24 +20,24 @@ class SynthesizeSpeech:
         registry: EngineRegistry,
         max_text_length: int,
         device: str = "auto",
+        lifecycle: EngineLifecycleManager | None = None,
     ) -> None:
         self._factory = factory
         self._registry = registry
         self._max_text_length = max_text_length
         self._device = device
-        self._engines: dict[str, BaseTTSEngine] = {}
+        self._lifecycle = lifecycle or EngineLifecycleManager(factory)
 
     def prepare_engine(self, engine_id: str) -> list[VoiceInfo]:
         """Create and load an engine if needed, then return its voices."""
 
-        engine = self._engines.get(engine_id)
-        if engine is None:
-            engine = self._factory.create(engine_id)
-            self._engines[engine_id] = engine
-        if not engine.is_loaded():
+        if not self._registry.contains(engine_id):
+            self._factory.create(engine_id)
+        engine = self._lifecycle.get(engine_id)
+        if not engine.is_loaded() or self._lifecycle.active_engine_id != engine_id:
             logger.info("Bắt đầu load engine", engine_id=engine_id)
             try:
-                engine.load(self._device)
+                engine = self._lifecycle.activate(engine_id, self._device)
             except AppError:
                 raise
             except Exception as exc:
@@ -73,7 +71,10 @@ class SynthesizeSpeech:
             text_length=len(text),
         )
         try:
-            result = self._engines[request.engine_id].synthesize(text, request.options)
+            result = self._lifecycle.run_with_active(
+                request.engine_id,
+                lambda engine: engine.synthesize(text, request.options),
+            )
         except AppError:
             raise
         except Exception as exc:
@@ -89,9 +90,4 @@ class SynthesizeSpeech:
     def unload_all(self) -> None:
         """Release every cached engine adapter during shutdown."""
 
-        for engine_id, engine in tuple(self._engines.items()):
-            try:
-                engine.unload()
-            except Exception:
-                logger.exception("Không thể unload engine", engine_id=engine_id)
-        self._engines.clear()
+        self._lifecycle.unload_all()

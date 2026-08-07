@@ -2,8 +2,8 @@
 
 import importlib
 
-from vntts.domain.hardware.models import HardwareInfo
-from vntts.infrastructure.hardware.hardware_detector import HardwareDetector
+from vntts.db.models import HardwareInfo
+from vntts.services.hardware import HardwareDetector
 
 
 def test_detector_always_returns_hardware_info() -> None:
@@ -30,4 +30,3 @@ def test_detector_survives_missing_torch(monkeypatch) -> None:  # type: ignore[n
     assert result.cuda_available is False
     assert result.gpu_name is None
     assert result.vram_gb is None
-

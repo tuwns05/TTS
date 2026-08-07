@@ -6,7 +6,7 @@ import pytest
 from loguru import logger
 
 from vntts.config.settings import Settings, load_settings
-from vntts.domain.exceptions import ConfigurationError
+from vntts.utils.exceptions import ConfigurationError
 from vntts.utils.logger import configure_logging
 
 
@@ -17,6 +17,7 @@ def test_settings_use_isolated_application_data_root(settings: Settings, tmp_pat
     assert settings.paths.models_dir == expected_root / "models"
     assert settings.paths.cache_dir.is_dir()
     assert settings.paths.logs_dir.is_dir()
+    assert settings.paths.bundled_models_dir.name == "models"
 
 
 def test_environment_path_override_is_respected(
@@ -39,6 +40,18 @@ def test_invalid_yaml_configuration_raises_app_error(tmp_path: Path) -> None:
 
     with pytest.raises(ConfigurationError, match="max_text_length"):
         load_settings(config, create_directories=False)
+
+
+def test_production_defaults_to_bundled_vieneu_v3(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("VNTTS_APP_DATA_DIR", str(tmp_path / "app-data"))
+    monkeypatch.setenv("VNTTS_ENVIRONMENT", "production")
+
+    result = load_settings(create_directories=False)
+
+    assert result.tts.default_engine == "vieneu-v3"
 
 
 def test_logging_writes_rotating_file_without_payload(settings: Settings) -> None:

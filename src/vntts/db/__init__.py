@@ -1,2 +1,1 @@
-"""Pure Python domain contracts and value objects."""
-
+"""Persistent and in-memory data models."""

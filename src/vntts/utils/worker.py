@@ -7,13 +7,23 @@ from threading import Event
 from typing import Generic, ParamSpec, TypeVar
 
 from loguru import logger
-from PySide6.QtCore import QRunnable, Slot
+from PySide6.QtCore import QObject, QRunnable, Signal, Slot
 
-from vntts.domain.exceptions import AppError
-from vntts.presentation.workers.worker_signals import WorkerSignals
+from vntts.utils.exceptions import AppError
 
 P = ParamSpec("P")
 R = TypeVar("R")
+
+
+class WorkerSignals(QObject):
+    """Thread-safe communication from a worker to the presentation layer."""
+
+    started = Signal()
+    progress = Signal(int, str)
+    result = Signal(object)
+    error = Signal(str)
+    cancelled = Signal()
+    finished = Signal()
 
 
 class TaskWorker(QRunnable, Generic[P, R]):
@@ -65,4 +75,3 @@ class TaskWorker(QRunnable, Generic[P, R]):
             self.signals.error.emit("Đã xảy ra lỗi kỹ thuật. Vui lòng kiểm tra nhật ký.")
         finally:
             self.signals.finished.emit()
-

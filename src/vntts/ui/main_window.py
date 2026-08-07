@@ -1,4 +1,4 @@
-"""Minimal runnable desktop window for the Phase 1 workflow."""
+"""Minimal runnable desktop window for the current TTS workflow."""
 
 from pathlib import Path
 
@@ -13,12 +13,14 @@ from PySide6.QtWidgets import (
 )
 
 from vntts.config.settings import Settings
-from vntts.domain.tts.models import SynthesisResult
-from vntts.presentation.viewmodels.main_viewmodel import MainViewModel
-from vntts.presentation.widgets.engine_selector import EngineSelector
-from vntts.presentation.widgets.playback_controls import PlaybackControls
-from vntts.presentation.widgets.text_input_widget import TextInputWidget
-from vntts.presentation.widgets.voice_settings_widget import VoiceSettingsWidget
+from vntts.db.models import SynthesisResult
+from vntts.ui.compose_view import (
+    EngineSelector,
+    MainViewModel,
+    PlaybackControls,
+    TextInputWidget,
+)
+from vntts.ui.settings_panel import VoiceSettingsWidget
 
 
 class MainWindow(QMainWindow):

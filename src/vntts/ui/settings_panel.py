@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
 )
 
 from vntts.config.settings import AudioSettings
-from vntts.domain.tts.models import AudioEffects, VoiceInfo
+from vntts.db.models import AudioEffects, VoiceInfo
 
 
 class VoiceSettingsWidget(QGroupBox):
@@ -70,4 +70,3 @@ class VoiceSettingsWidget(QGroupBox):
             pitch_semitones=self.pitch_spin.value(),
             volume_db=self.volume_spin.value(),
         )
-

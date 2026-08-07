@@ -6,16 +6,15 @@ import time
 
 import numpy as np
 
-from vntts.domain.exceptions import EngineLoadError, EngineNotLoadedError, ValidationError
-from vntts.domain.tts.capabilities import EngineCapabilities
-from vntts.domain.tts.engine import BaseTTSEngine
-from vntts.domain.tts.models import (
+from vntts.db.models import (
     FAKE_ENGINE_ID,
     EngineInfo,
     EngineSynthesisOptions,
     SynthesisResult,
     VoiceInfo,
 )
+from vntts.engines.base import BaseTTSEngine, EngineCapabilities
+from vntts.utils.exceptions import EngineLoadError, EngineNotLoadedError, ValidationError
 
 
 class FakeTTSEngine(BaseTTSEngine):
@@ -57,6 +56,11 @@ class FakeTTSEngine(BaseTTSEngine):
         """Return deliberately limited fake capabilities."""
 
         return self.CAPABILITIES
+
+    def is_available(self) -> bool:
+        """The fake engine has no optional runtime or model files."""
+
+        return True
 
     def load(self, device: str) -> None:
         """Simulate loading on CPU or automatic device selection."""
@@ -103,4 +107,3 @@ class FakeTTSEngine(BaseTTSEngine):
         frequency = 180.0 + 30.0 * sorted(voice_ids).index(options.voice_id)
         audio = (0.15 * np.sin(2.0 * np.pi * frequency * timeline)).astype(np.float32)
         return SynthesisResult(audio=audio, sample_rate=self._sample_rate)
-

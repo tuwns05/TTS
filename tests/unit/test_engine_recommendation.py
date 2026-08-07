@@ -2,11 +2,11 @@
 
 import pytest
 
-from vntts.application.services.engine_recommendation_service import (
+from vntts.services.hardware import (
     EngineRecommendationService,
 )
 from vntts.config.settings import Settings
-from vntts.domain.hardware.models import HardwareInfo
+from vntts.db.models import HardwareInfo
 
 
 def _hardware(
@@ -51,4 +51,3 @@ def test_recommendation_tiers(
     assert recommendation.engine_id == expected_id
     assert recommendation.confidence == expected_confidence
     assert recommendation.reason.strip()
-

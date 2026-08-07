@@ -2,9 +2,9 @@
 
 import pytest
 
-from vntts.application.services.engine_registry import EngineRegistry
-from vntts.domain.exceptions import EngineNotFoundError, ValidationError
-from vntts.infrastructure.engines.fake_engine import FakeTTSEngine
+from vntts.engines.factory import EngineRegistry
+from vntts.engines.fake_engine import FakeTTSEngine
+from vntts.utils.exceptions import EngineNotFoundError, ValidationError
 
 
 def test_register_and_create_engine() -> None:
@@ -45,3 +45,22 @@ def test_listing_metadata_does_not_invoke_provider() -> None:
     assert registry.list_engine_info() == [FakeTTSEngine.INFO]
     assert calls == 0
 
+
+def test_registry_returns_registered_capabilities_without_provider_call() -> None:
+    registry = EngineRegistry()
+    calls = 0
+
+    def provider() -> FakeTTSEngine:
+        nonlocal calls
+        calls += 1
+        return FakeTTSEngine()
+
+    registry.register(
+        "fake",
+        provider,
+        FakeTTSEngine.INFO,
+        FakeTTSEngine.CAPABILITIES,
+    )
+
+    assert registry.get_capabilities("fake") == FakeTTSEngine.CAPABILITIES
+    assert calls == 0

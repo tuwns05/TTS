@@ -3,12 +3,11 @@
 import pytest
 from loguru import logger
 
-from vntts.application.services.engine_factory import EngineFactory
-from vntts.application.services.engine_registry import EngineRegistry
-from vntts.application.use_cases.synthesize_speech import SynthesizeSpeech
-from vntts.domain.exceptions import EngineNotFoundError, ValidationError
-from vntts.domain.tts.models import AudioEffects, EngineSynthesisOptions, SynthesisRequest
-from vntts.infrastructure.engines.fake_engine import FakeTTSEngine
+from vntts.db.models import AudioEffects, EngineSynthesisOptions, SynthesisRequest
+from vntts.engines.factory import EngineFactory, EngineRegistry
+from vntts.engines.fake_engine import FakeTTSEngine
+from vntts.services.synthesis import SynthesizeSpeech
+from vntts.utils.exceptions import EngineNotFoundError, ValidationError
 
 
 def _use_case(max_length: int = 100) -> SynthesizeSpeech:
@@ -62,4 +61,3 @@ def test_does_not_log_full_user_text() -> None:
         logger.remove(sink_id)
 
     assert all(sensitive_text not in message for message in messages)
-

@@ -3,9 +3,9 @@
 import numpy as np
 import pytest
 
-from vntts.domain.exceptions import EngineNotLoadedError, ValidationError
-from vntts.domain.tts.models import EngineSynthesisOptions
-from vntts.infrastructure.engines.fake_engine import FakeTTSEngine
+from vntts.db.models import EngineSynthesisOptions
+from vntts.engines.fake_engine import FakeTTSEngine
+from vntts.utils.exceptions import EngineNotLoadedError, ValidationError
 
 
 def test_load_and_unload_state() -> None:
@@ -52,4 +52,3 @@ def test_synthesis_returns_valid_numpy_audio() -> None:
     assert result.audio.dtype == np.float32
     assert result.audio.size > 0
     assert result.sample_rate > 0
-

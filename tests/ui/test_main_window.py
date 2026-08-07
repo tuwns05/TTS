@@ -1,18 +1,17 @@
-"""UI tests for the runnable Phase 1 window."""
+"""UI tests for the runnable desktop window."""
 
 from __future__ import annotations
 
 from PySide6.QtCore import QThreadPool, QTimer
 from PySide6.QtWidgets import QPushButton
 
-from vntts.application.services.engine_factory import EngineFactory
-from vntts.application.services.engine_registry import EngineRegistry
-from vntts.application.use_cases.synthesize_speech import SynthesizeSpeech
+from vntts.engines.factory import EngineFactory, EngineRegistry
 from vntts.config.settings import Settings
-from vntts.domain.tts.models import AudioEffects
-from vntts.infrastructure.engines.fake_engine import FakeTTSEngine
-from vntts.presentation.main_window import MainWindow
-from vntts.presentation.viewmodels.main_viewmodel import MainViewModel
+from vntts.db.models import AudioEffects
+from vntts.engines.fake_engine import FakeTTSEngine
+from vntts.services.synthesis import SynthesizeSpeech
+from vntts.ui.compose_view import MainViewModel
+from vntts.ui.main_window import MainWindow
 
 
 def _window(qtbot, settings: Settings) -> tuple[MainWindow, MainViewModel]:  # type: ignore[no-untyped-def]

@@ -2,10 +2,9 @@
 
 import pytest
 
-from vntts.application.services.engine_factory import EngineFactory
-from vntts.application.services.engine_registry import EngineRegistry
-from vntts.domain.exceptions import EngineNotFoundError
-from vntts.infrastructure.engines.fake_engine import FakeTTSEngine
+from vntts.engines.factory import EngineFactory, EngineRegistry
+from vntts.engines.fake_engine import FakeTTSEngine
+from vntts.utils.exceptions import EngineNotFoundError
 
 
 def _factory() -> EngineFactory:
@@ -29,4 +28,3 @@ def test_factory_returns_independent_instances() -> None:
 def test_factory_rejects_unknown_engine_id() -> None:
     with pytest.raises(EngineNotFoundError):
         _factory().create("unknown")
-

@@ -1,14 +1,31 @@
-"""Engine-neutral TTS adapter contract."""
+"""Engine-neutral TTS contracts and shared adapter helpers."""
+
+from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 
-from vntts.domain.tts.capabilities import EngineCapabilities
-from vntts.domain.tts.models import (
+import numpy as np
+
+from vntts.db.models import (
     EngineInfo,
     EngineSynthesisOptions,
     SynthesisResult,
     VoiceInfo,
 )
+from vntts.utils.exceptions import SynthesisError
+
+
+@dataclass(frozen=True)
+class EngineCapabilities:
+    """Features and devices supported by an engine adapter."""
+
+    voice_cloning: bool
+    native_speed_control: bool
+    native_pitch_control: bool
+    streaming: bool
+    cpu_supported: bool
+    gpu_supported: bool
 
 
 class BaseTTSEngine(ABC):
@@ -23,6 +40,16 @@ class BaseTTSEngine(ABC):
     @abstractmethod
     def capabilities(self) -> EngineCapabilities:
         """Return capabilities available through this adapter."""
+
+    def is_available(self) -> bool:
+        """Return whether local runtime dependencies and model assets exist.
+
+        Adapters should override this lightweight check when they depend on
+        optional SDKs or external model files. The default keeps simple test
+        adapters backwards compatible.
+        """
+
+        return True
 
     @abstractmethod
     def load(self, device: str) -> None:
@@ -48,3 +75,29 @@ class BaseTTSEngine(ABC):
     ) -> SynthesisResult:
         """Synthesize text into an engine-neutral audio result."""
 
+
+def to_mono_float32(value: object) -> np.ndarray:
+    """Convert an SDK tensor/array into the domain mono float32 format."""
+
+    candidate = value
+    detach = getattr(candidate, "detach", None)
+    if callable(detach):
+        candidate = detach()
+        cpu = getattr(candidate, "cpu", None)
+        if callable(cpu):
+            candidate = cpu()
+        numpy_method = getattr(candidate, "numpy", None)
+        if callable(numpy_method):
+            candidate = numpy_method()
+
+    try:
+        audio = np.asarray(candidate, dtype=np.float32)
+    except (TypeError, ValueError) as exc:
+        raise SynthesisError("Engine trả về dữ liệu âm thanh không hợp lệ.") from exc
+
+    audio = np.squeeze(audio)
+    if audio.ndim != 1 or audio.size == 0:
+        raise SynthesisError("Engine phải trả về một waveform mono không rỗng.")
+    if not bool(np.isfinite(audio).all()):
+        raise SynthesisError("Waveform chứa giá trị không hữu hạn.")
+    return np.ascontiguousarray(audio, dtype=np.float32)

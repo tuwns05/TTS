@@ -36,11 +36,10 @@ where = ["src"]
 [tool.setuptools.package-data]
 vntts = [
     "config/*.yaml",
-    "presentation/resources/*.qss",
+    "ui/resources/*.qss",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "-ra"
-

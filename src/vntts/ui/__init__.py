@@ -1,2 +1,1 @@
-"""PySide6 presentation layer."""
-
+"""PySide6 user-interface layer."""
