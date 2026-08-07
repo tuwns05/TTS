@@ -1,4 +1,4 @@
-"""Contract tests for local-only VieNeu adapters without real models."""
+"""Contract tests for VieNeu adapters without loading real models."""
 
 from pathlib import Path
 
@@ -37,9 +37,7 @@ def vieneu_paths(tmp_path: Path) -> tuple[Path, Path]:
     return backbone, codec
 
 
-@pytest.mark.parametrize("engine_class", [VieNeuV3Engine, VieNeuV2Engine])
-def test_vieneu_load_uses_only_local_paths(
-    engine_class: type[VieNeuV3Engine] | type[VieNeuV2Engine],
+def test_vieneu_v2_load_uses_only_local_paths(
     vieneu_paths: tuple[Path, Path],
 ) -> None:
     calls: list[dict[str, object]] = []
@@ -50,7 +48,7 @@ def test_vieneu_load_uses_only_local_paths(
         return runtime
 
     backbone, codec = vieneu_paths
-    engine = engine_class(backbone, codec, sdk_factory=factory)
+    engine = VieNeuV2Engine(backbone, codec, sdk_factory=factory)
     engine.load("cpu")
 
     assert calls == [
@@ -71,23 +69,73 @@ def test_vieneu_load_uses_only_local_paths(
     assert runtime.closed
 
 
+def test_vieneu_v3_loads_from_local_model_directory(tmp_path: Path) -> None:
+    calls: list[dict[str, object]] = []
+    runtime = _VieNeuRuntime()
+    model_path = tmp_path / "vieneu-v3"
+    model_path.mkdir()
+    tokenizer_path = model_path / "moss-tokenizer"
+    tokenizer_path.mkdir()
+
+    def factory(**kwargs: object) -> _VieNeuRuntime:
+        calls.append(kwargs)
+        return runtime
+
+    engine = VieNeuV3Engine(
+        model_path,
+        tokenizer_path=tokenizer_path,
+        sdk_factory=factory,
+    )
+    engine.load("cpu")
+
+    assert calls == [
+        {
+            "mode": "v3turbo",
+            "backbone_repo": str(model_path.resolve()),
+            "moss_tokenizer": str(tokenizer_path.resolve()),
+            "device": "cpu",
+            "backend": "auto",
+        }
+    ]
+    assert engine.list_voices()[0].voice_id == "bac_si_tuyen"
+    engine.unload()
+    assert runtime.closed
+
+
+def test_vieneu_v3_development_can_use_official_repository() -> None:
+    calls: list[dict[str, object]] = []
+
+    def factory(**kwargs: object) -> _VieNeuRuntime:
+        calls.append(kwargs)
+        return _VieNeuRuntime()
+
+    engine = VieNeuV3Engine(allow_download=True, sdk_factory=factory)
+    assert engine.is_available()
+    engine.load("cpu")
+
+    assert calls[0]["mode"] == "v3turbo"
+    assert calls[0]["backbone_repo"] == "pnnbao-ump/VieNeu-TTS-v3-Turbo"
+    assert calls[0]["moss_tokenizer"] == "OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano"
+
+
 def test_vieneu_rejects_missing_local_assets(tmp_path: Path) -> None:
     engine = VieNeuV3Engine(
-        tmp_path / "missing-backbone",
-        tmp_path / "missing-codec",
+        tmp_path / "missing-model",
         sdk_factory=lambda **_: _VieNeuRuntime(),
     )
 
     assert not engine.is_available()
-    with pytest.raises(EngineLoadError, match="Thiếu model VieNeu local"):
+    with pytest.raises(EngineLoadError, match="Thiếu tài nguyên VieNeu v3 bundled"):
         engine.load("cpu")
 
 
 def test_vieneu_v3_passes_local_reference_audio(
-    vieneu_paths: tuple[Path, Path],
     tmp_path: Path,
 ) -> None:
-    backbone, codec = vieneu_paths
+    model_path = tmp_path / "vieneu-v3"
+    model_path.mkdir()
+    tokenizer_path = model_path / "moss-tokenizer"
+    tokenizer_path.mkdir()
     calls: list[dict[str, object]] = []
 
     class Runtime(_VieNeuRuntime):
@@ -96,8 +144,8 @@ def test_vieneu_v3_passes_local_reference_audio(
             return super().infer(**kwargs)
 
     engine = VieNeuV3Engine(
-        backbone,
-        codec,
+        model_path,
+        tokenizer_path=tokenizer_path,
         sdk_factory=lambda **_: Runtime(),
     )
     engine.load("cpu")
@@ -137,7 +185,7 @@ def test_vieneu_v2_rejects_reference_audio(
         )
 
 
-def test_capabilities_match_phase_2_adapter_contract() -> None:
+def test_capabilities_match_adapter_contract() -> None:
     assert VieNeuV3Engine.CAPABILITIES.cpu_supported
     assert VieNeuV3Engine.CAPABILITIES.gpu_supported
     assert VieNeuV3Engine.CAPABILITIES.voice_cloning

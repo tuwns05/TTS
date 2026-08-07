@@ -2,10 +2,10 @@
 
 from vntts.db.models import EngineInfo
 from vntts.engines.factory import EngineFactory, EngineLifecycleManager, EngineRegistry
-from vntts.engines.fake_engine import FakeTTSEngine
+from tests.stubs import StubTTSEngine
 
 
-class _TrackingFake(FakeTTSEngine):
+class _TrackingStub(StubTTSEngine):
     def __init__(self, engine_id: str) -> None:
         super().__init__(processing_delay=0)
         self._info = EngineInfo(engine_id, engine_id)
@@ -22,8 +22,8 @@ class _TrackingFake(FakeTTSEngine):
 
 def test_switching_engine_unloads_previous_instance() -> None:
     registry = EngineRegistry()
-    first = _TrackingFake("first")
-    second = _TrackingFake("second")
+    first = _TrackingStub("first")
+    second = _TrackingStub("second")
     registry.register("first", lambda: first, first.engine_info, first.capabilities)
     registry.register("second", lambda: second, second.engine_info, second.capabilities)
     lifecycle = EngineLifecycleManager(EngineFactory(registry))
@@ -39,10 +39,10 @@ def test_switching_engine_unloads_previous_instance() -> None:
 
 def test_reactivating_same_engine_does_not_reload_or_recreate() -> None:
     registry = EngineRegistry()
-    engine = _TrackingFake("only")
+    engine = _TrackingStub("only")
     calls = 0
 
-    def provider() -> _TrackingFake:
+    def provider() -> _TrackingStub:
         nonlocal calls
         calls += 1
         return engine
@@ -56,7 +56,7 @@ def test_reactivating_same_engine_does_not_reload_or_recreate() -> None:
 
 def test_unload_all_releases_and_forgets_adapters() -> None:
     registry = EngineRegistry()
-    engine = _TrackingFake("only")
+    engine = _TrackingStub("only")
     registry.register("only", lambda: engine, engine.engine_info, engine.capabilities)
     lifecycle = EngineLifecycleManager(EngineFactory(registry))
     lifecycle.activate("only")

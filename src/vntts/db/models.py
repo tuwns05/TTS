@@ -10,7 +10,6 @@ from vntts.utils.exceptions import ValidationError
 VIENEU_V3_ENGINE_ID = "vieneu-v3"
 VIENEU_V2_ENGINE_ID = "vieneu-v2"
 KOKORO_VI_ENGINE_ID = "kokoro-vi"
-FAKE_ENGINE_ID = "fake"
 
 
 @dataclass(frozen=True)

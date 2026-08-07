@@ -1,4 +1,4 @@
-"""Local-only VieNeu-TTS v2-Turbo and v3-Turbo adapters."""
+"""VieNeu-TTS v2 and v3 Turbo adapters."""
 
 from __future__ import annotations
 
@@ -40,6 +40,8 @@ class _VieNeuRuntime(Protocol):
 
 
 VieNeuFactory = Callable[..., _VieNeuRuntime]
+VIENEU_V3_REPOSITORY = "pnnbao-ump/VieNeu-TTS-v3-Turbo"
+VIENEU_V3_TOKENIZER_REPOSITORY = "OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano"
 
 
 def _default_vieneu_factory(**kwargs: object) -> _VieNeuRuntime:
@@ -66,7 +68,7 @@ def _cuda_available() -> bool:
 
 
 class BaseVieNeuEngine(BaseTTSEngine):
-    """Adapt VieNeu preset-voice inference using local paths only."""
+    """Adapt the legacy VieNeu v2 standard mode using local paths only."""
 
     def __init__(
         self,
@@ -239,8 +241,8 @@ class VieNeuV2Engine(BaseVieNeuEngine):
         )
 
 
-class VieNeuV3Engine(BaseVieNeuEngine):
-    """Run bundled v3 assets without repository IDs or remote mode."""
+class VieNeuV3Engine(BaseTTSEngine):
+    """Run VieNeu v3 Turbo from the development cache or bundled assets."""
 
     INFO = EngineInfo(
         VIENEU_V3_ENGINE_ID,
@@ -259,17 +261,143 @@ class VieNeuV3Engine(BaseVieNeuEngine):
 
     def __init__(
         self,
-        backbone_path: Path,
-        codec_path: Path,
+        model_path: Path | None = None,
         *,
+        tokenizer_path: Path | None = None,
+        allow_download: bool = False,
+        backend: str = "auto",
         sample_rate: int = 48_000,
         sdk_factory: VieNeuFactory | None = None,
     ) -> None:
-        super().__init__(
-            engine_info=self.INFO,
-            capabilities=self.CAPABILITIES,
-            backbone_path=backbone_path,
-            codec_path=codec_path,
-            sample_rate=sample_rate,
-            sdk_factory=sdk_factory,
+        self._model_path = model_path.resolve() if model_path is not None else None
+        self._tokenizer_path = (
+            tokenizer_path.resolve() if tokenizer_path is not None else None
         )
+        self._allow_download = allow_download
+        self._backend = backend
+        self._sample_rate = sample_rate
+        self._sdk_factory = sdk_factory or _default_vieneu_factory
+        self._injected_factory = sdk_factory is not None
+        self._runtime: _VieNeuRuntime | None = None
+        self._voices: list[VoiceInfo] = []
+
+    @property
+    def engine_info(self) -> EngineInfo:
+        return self.INFO
+
+    @property
+    def capabilities(self) -> EngineCapabilities:
+        return self.CAPABILITIES
+
+    def is_available(self) -> bool:
+        sdk_exists = self._injected_factory or _sdk_is_installed()
+        model_available = self._allow_download or (
+            self._model_path is not None and self._model_path.is_dir()
+        )
+        tokenizer_available = self._allow_download or (
+            self._tokenizer_path is not None and self._tokenizer_path.is_dir()
+        )
+        return sdk_exists and model_available and tokenizer_available
+
+    def load(self, device: str) -> None:
+        if self._runtime is not None:
+            return
+        if not self._allow_download:
+            missing = []
+            if self._model_path is None or not self._model_path.is_dir():
+                missing.append("model")
+            if self._tokenizer_path is None or not self._tokenizer_path.is_dir():
+                missing.append("MOSS tokenizer")
+            if missing:
+                raise EngineLoadError(
+                    "Thiếu tài nguyên VieNeu v3 bundled: " + ", ".join(missing)
+                )
+
+        resolved_device = self._resolve_device(device)
+        model_source = (
+            str(self._model_path)
+            if self._model_path is not None and self._model_path.is_dir()
+            else VIENEU_V3_REPOSITORY
+        )
+        tokenizer_source = (
+            str(self._tokenizer_path)
+            if self._tokenizer_path is not None and self._tokenizer_path.is_dir()
+            else VIENEU_V3_TOKENIZER_REPOSITORY
+        )
+        try:
+            runtime = self._sdk_factory(
+                mode="v3turbo",
+                backbone_repo=model_source,
+                moss_tokenizer=tokenizer_source,
+                device=resolved_device,
+                backend=self._backend,
+            )
+            raw_voices = runtime.list_preset_voices()
+            voices = [
+                VoiceInfo(voice_id=str(voice_id), display_name=str(description))
+                for description, voice_id in raw_voices
+            ]
+        except Exception as exc:
+            close = locals().get("runtime")
+            close_method = getattr(close, "close", None)
+            if callable(close_method):
+                close_method()
+            raise EngineLoadError("Không thể khởi tạo VieNeu-TTS v3-Turbo.") from exc
+
+        if not voices:
+            runtime.close()
+            raise EngineLoadError("VieNeu v3 không cung cấp giọng dựng sẵn nào.")
+        self._runtime = runtime
+        self._voices = voices
+
+    def unload(self) -> None:
+        runtime, self._runtime = self._runtime, None
+        self._voices = []
+        if runtime is not None:
+            try:
+                runtime.close()
+            except Exception as exc:
+                raise EngineLoadError("Không thể giải phóng VieNeu-TTS v3-Turbo.") from exc
+
+    def is_loaded(self) -> bool:
+        return self._runtime is not None
+
+    def list_voices(self) -> list[VoiceInfo]:
+        if self._runtime is None:
+            raise EngineNotLoadedError("VieNeu-TTS v3-Turbo chưa được load.")
+        return list(self._voices)
+
+    def synthesize(
+        self,
+        text: str,
+        options: EngineSynthesisOptions,
+    ) -> SynthesisResult:
+        runtime = self._runtime
+        if runtime is None:
+            raise EngineNotLoadedError("VieNeu-TTS v3-Turbo chưa được load.")
+        if not text.strip():
+            raise ValidationError("Văn bản không được để trống.")
+        if options.voice_id not in {voice.voice_id for voice in self._voices}:
+            raise ValidationError("Giọng đọc không tồn tại trong engine đã chọn.")
+
+        try:
+            if options.reference_audio_path is not None:
+                reference_path = Path(options.reference_audio_path).expanduser().resolve()
+                if not reference_path.is_file():
+                    raise ValidationError("Không tìm thấy tệp âm thanh tham chiếu.")
+                audio = runtime.infer(text=text.strip(), ref_audio=str(reference_path))
+            else:
+                voice = runtime.get_preset_voice(options.voice_id)
+                audio = runtime.infer(text=text.strip(), voice=voice)
+        except ValidationError:
+            raise
+        except Exception as exc:
+            raise SynthesisError("VieNeu-TTS v3-Turbo không thể tổng hợp giọng nói.") from exc
+        return SynthesisResult(to_mono_float32(audio), self._sample_rate)
+
+    def _resolve_device(self, requested: str) -> str:
+        if requested not in {"auto", "cpu", "cuda"}:
+            raise EngineLoadError(f"Thiết bị '{requested}' không được hỗ trợ.")
+        if requested == "auto":
+            return "cuda" if _cuda_available() else "cpu"
+        return requested

@@ -1,6 +1,6 @@
 # Hướng dẫn Production
 
-> Repository chưa sẵn sàng production: Giai đoạn 2 mới hoàn thành ở mức adapter và unit test, chưa bundle/test model thật. Không phân phối `FakeTTSEngine`, source checkout hoặc `.venv` cho người dùng cuối.
+> Repository chưa sẵn sàng production cho đến khi model bundled, dependency lock và bản cài đặt offline được kiểm chứng trên máy Windows sạch. Không phân phối source checkout hoặc `.venv` cho người dùng cuối.
 
 ## 1. Release gate
 
@@ -45,7 +45,6 @@ $env:VNTTS_LOG_LEVEL = "INFO"
 - Dữ liệu ghi được nằm trong `%LOCALAPPDATA%\VietnameseTTSDesktop`.
 - V3 bundled nằm trong vùng read-only của installer; v2/Kokoro nằm trong app-data.
 - Chọn `vieneu-v3` mặc định và load local bằng worker.
-- Không đăng ký `FakeTTSEngine`.
 - Không bật console log, `diagnose` hoặc traceback chứa dữ liệu nhạy cảm.
 - Không bundle model cache, log, text, audio hoặc mẫu giọng của developer.
 
@@ -105,7 +104,7 @@ Rollback executable phải bảo toàn dữ liệu người dùng và chỉ th�
 - [ ] First-run v3 offline pass, không có Hugging Face cache.
 - [ ] GPU failure có v3 CPU fallback nếu bản build công bố hỗ trợ.
 - [ ] V2/Kokoro không tự tải.
-- [ ] Không có fake engine hoặc payload nhạy cảm.
+- [ ] Không có payload nhạy cảm trong artifact hoặc log.
 - [ ] Upgrade/rollback/uninstall đã kiểm tra.
 - [ ] Artifact có checksum, notices và release notes.
 

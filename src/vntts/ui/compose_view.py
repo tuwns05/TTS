@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QObject, QThreadPool, Signal
+from PySide6.QtCore import QObject, QPointF, QThreadPool, Qt, Signal
+from PySide6.QtGui import QColor, QPaintEvent, QPainter, QPen
 from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
     QLabel,
     QPlainTextEdit,
     QPushButton,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -215,12 +217,25 @@ class EngineSelector(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.setObjectName("enginePanel")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.combo = QComboBox(self)
         self.combo.setObjectName("engineCombo")
+        self.combo.setAccessibleName("Engine tổng hợp")
+        self.combo.setMinimumHeight(44)
         self.recommendation_label = QLabel(self)
+        self.recommendation_label.setObjectName("recommendationLabel")
         self.recommendation_label.setWordWrap(True)
+        title = QLabel("Engine", self)
+        title.setObjectName("sectionTitle")
+        field_label = QLabel("Mô hình tổng hợp", self)
+        field_label.setObjectName("fieldLabel")
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel("Engine", self))
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(8)
+        layout.addWidget(title)
+        layout.addSpacing(8)
+        layout.addWidget(field_label)
         layout.addWidget(self.combo)
         layout.addWidget(self.recommendation_label)
         self.combo.currentIndexChanged.connect(self._emit_current_engine)
@@ -244,7 +259,9 @@ class EngineSelector(QWidget):
 
         if recommendation is None:
             self.recommendation_label.clear()
+            self.recommendation_label.hide()
             return
+        self.recommendation_label.show()
         self.recommendation_label.setText(
             f"Khuyến nghị khi khả dụng: {recommendation.engine_id} — {recommendation.reason}"
         )
@@ -262,21 +279,103 @@ class EngineSelector(QWidget):
 
 
 class PlaybackControls(QWidget):
-    """Show the planned Play/Pause/Stop controls without fake playback."""
+    """Expose Play/Pause/Stop commands and reflect playback state."""
+
+    play_requested = Signal()
+    pause_requested = Signal()
+    stop_requested = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         layout = QHBoxLayout(self)
-        for name, label in (
-            ("playButton", "Play"),
-            ("pauseButton", "Pause"),
-            ("stopButton", "Stop"),
-        ):
-            button = QPushButton(label, self)
-            button.setObjectName(name)
-            button.setEnabled(False)
-            button.setToolTip("Playback thật sẽ được triển khai ở Giai đoạn 5.")
+        self.play_button = QPushButton("Play", self)
+        self.play_button.setObjectName("playButton")
+        self.pause_button = QPushButton("Pause", self)
+        self.pause_button.setObjectName("pauseButton")
+        self.stop_button = QPushButton("Stop", self)
+        self.stop_button.setObjectName("stopButton")
+        for button in (self.play_button, self.pause_button, self.stop_button):
+            button.setMinimumHeight(44)
             layout.addWidget(button)
+        self.play_button.setText("Phát")
+        self.pause_button.setText("Tạm dừng")
+        self.stop_button.setText("Dừng")
+        self.play_button.setAccessibleName("Phát audio")
+        self.pause_button.setAccessibleName("Tạm dừng audio")
+        self.stop_button.setAccessibleName("Dừng audio")
+        self.play_button.clicked.connect(self.play_requested)
+        self.pause_button.clicked.connect(self.pause_requested)
+        self.stop_button.clicked.connect(self.stop_requested)
+        self.set_playback_state("empty")
+
+    def set_playback_state(self, state: str) -> None:
+        """Enable only commands valid for the current playback state."""
+
+        has_audio = state != "empty"
+        self.play_button.setEnabled(has_audio and state != "playing")
+        self.pause_button.setEnabled(state == "playing")
+        self.stop_button.setEnabled(state in {"playing", "paused"})
+
+
+class WaveformPreview(QWidget):
+    """Render a compact, single-color preview of the current waveform."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("waveformPreview")
+        self.setMinimumHeight(88)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self._audio: object | None = None
+
+    @property
+    def has_audio(self) -> bool:
+        """Return whether a waveform is available for rendering."""
+
+        return int(getattr(self._audio, "size", 0)) > 0
+
+    def set_result(self, result: SynthesisResult) -> None:
+        """Retain only the audio reference required for visual preview."""
+
+        self._audio = result.audio
+        self.update()
+
+    def clear(self) -> None:
+        """Return to the empty waveform state."""
+
+        self._audio = None
+        self.update()
+
+    def paintEvent(self, event: QPaintEvent) -> None:
+        super().paintEvent(event)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        bounds = self.rect().adjusted(16, 12, -16, -12)
+        painter.setPen(QPen(QColor("#DCE7F8"), 1))
+        center_y = bounds.center().y()
+        painter.drawLine(bounds.left(), center_y, bounds.right(), center_y)
+
+        audio = self._audio
+        size = int(getattr(audio, "size", 0))
+        if size <= 0:
+            painter.setPen(QColor("#6B7280"))
+            painter.drawText(
+                bounds,
+                Qt.AlignmentFlag.AlignCenter,
+                "Waveform sẽ xuất hiện sau khi tạo giọng nói",
+            )
+            return
+
+        bar_count = max(24, min(120, bounds.width() // 6))
+        step = max(1, size // bar_count)
+        painter.setPen(QPen(QColor("#3B82F6"), 2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        for index in range(bar_count):
+            start = min(size - 1, index * step)
+            end = min(size, start + step)
+            segment = audio[start:end]
+            peak = float(abs(segment).max()) if getattr(segment, "size", 0) else 0.0
+            height = max(2.0, min(1.0, peak) * bounds.height() * 0.46)
+            x = bounds.left() + (index + 0.5) * bounds.width() / bar_count
+            painter.drawLine(QPointF(x, center_y - height), QPointF(x, center_y + height))
 
 
 class TextInputWidget(QWidget):
@@ -286,17 +385,30 @@ class TextInputWidget(QWidget):
 
     def __init__(self, max_length: int, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.setObjectName("textInputPanel")
         self._max_length = max_length
         self.editor = QPlainTextEdit(self)
         self.editor.setObjectName("textInput")
         self.editor.setPlaceholderText("Nhập văn bản tiếng Việt cần tổng hợp...")
+        self.editor.setAccessibleName("Nội dung tiếng Việt")
+        self.editor.setMinimumHeight(280)
         self.character_count = QLabel(self)
         self.character_count.setObjectName("characterCount")
 
+        title = QLabel("Nội dung tiếng Việt", self)
+        title.setObjectName("sectionTitle")
+        helper = QLabel("Nhập hoặc dán nội dung cần chuyển thành giọng nói.", self)
+        helper.setObjectName("helperText")
+        header = QHBoxLayout()
+        header.addWidget(title)
+        header.addStretch()
+        header.addWidget(self.character_count)
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel("Văn bản", self))
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+        layout.addLayout(header)
+        layout.addWidget(helper)
         layout.addWidget(self.editor)
-        layout.addWidget(self.character_count)
         self.editor.textChanged.connect(self._on_text_changed)
         self._on_text_changed()
 

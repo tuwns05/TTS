@@ -25,7 +25,7 @@ _SAFE_DEFAULTS: dict[str, object] = {
         "logs_dir": "data/logs",
     },
     "tts": {
-        "default_engine": "fake",
+        "default_engine": "vieneu-v3",
         "production_default_engine": "vieneu-v3",
         "max_text_length": 10_000,
     },

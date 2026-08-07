@@ -3,24 +3,24 @@
 import pytest
 
 from vntts.engines.factory import EngineRegistry
-from vntts.engines.fake_engine import FakeTTSEngine
 from vntts.utils.exceptions import EngineNotFoundError, ValidationError
+from tests.stubs import StubTTSEngine
 
 
 def test_register_and_create_engine() -> None:
     registry = EngineRegistry()
-    registry.register("fake", FakeTTSEngine, FakeTTSEngine.INFO)
+    registry.register("stub", StubTTSEngine, StubTTSEngine.INFO)
 
-    assert registry.contains("fake")
-    assert isinstance(registry.create("fake"), FakeTTSEngine)
+    assert registry.contains("stub")
+    assert isinstance(registry.create("stub"), StubTTSEngine)
 
 
 def test_duplicate_engine_id_is_rejected() -> None:
     registry = EngineRegistry()
-    registry.register("fake", FakeTTSEngine, FakeTTSEngine.INFO)
+    registry.register("stub", StubTTSEngine, StubTTSEngine.INFO)
 
     with pytest.raises(ValidationError, match="đã được đăng ký"):
-        registry.register("fake", FakeTTSEngine, FakeTTSEngine.INFO)
+        registry.register("stub", StubTTSEngine, StubTTSEngine.INFO)
 
 
 def test_unknown_engine_raises_application_error() -> None:
@@ -34,15 +34,15 @@ def test_listing_metadata_does_not_invoke_provider() -> None:
     registry = EngineRegistry()
     calls = 0
 
-    def provider() -> FakeTTSEngine:
+    def provider() -> StubTTSEngine:
         nonlocal calls
         calls += 1
-        return FakeTTSEngine()
+        return StubTTSEngine()
 
-    registry.register("fake", provider, FakeTTSEngine.INFO)
+    registry.register("stub", provider, StubTTSEngine.INFO)
 
-    assert registry.list_engine_ids() == ["fake"]
-    assert registry.list_engine_info() == [FakeTTSEngine.INFO]
+    assert registry.list_engine_ids() == ["stub"]
+    assert registry.list_engine_info() == [StubTTSEngine.INFO]
     assert calls == 0
 
 
@@ -50,17 +50,17 @@ def test_registry_returns_registered_capabilities_without_provider_call() -> Non
     registry = EngineRegistry()
     calls = 0
 
-    def provider() -> FakeTTSEngine:
+    def provider() -> StubTTSEngine:
         nonlocal calls
         calls += 1
-        return FakeTTSEngine()
+        return StubTTSEngine()
 
     registry.register(
-        "fake",
+        "stub",
         provider,
-        FakeTTSEngine.INFO,
-        FakeTTSEngine.CAPABILITIES,
+        StubTTSEngine.INFO,
+        StubTTSEngine.CAPABILITIES,
     )
 
-    assert registry.get_capabilities("fake") == FakeTTSEngine.CAPABILITIES
+    assert registry.get_capabilities("stub") == StubTTSEngine.CAPABILITIES
     assert calls == 0

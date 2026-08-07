@@ -3,24 +3,24 @@
 import pytest
 
 from vntts.engines.factory import EngineFactory, EngineRegistry
-from vntts.engines.fake_engine import FakeTTSEngine
 from vntts.utils.exceptions import EngineNotFoundError
+from tests.stubs import StubTTSEngine
 
 
 def _factory() -> EngineFactory:
     registry = EngineRegistry()
-    registry.register("fake", FakeTTSEngine, FakeTTSEngine.INFO)
+    registry.register("stub", StubTTSEngine, StubTTSEngine.INFO)
     return EngineFactory(registry)
 
 
 def test_factory_creates_correct_engine() -> None:
-    assert isinstance(_factory().create("fake"), FakeTTSEngine)
+    assert isinstance(_factory().create("stub"), StubTTSEngine)
 
 
 def test_factory_returns_independent_instances() -> None:
     factory = _factory()
-    first = factory.create("fake")
-    second = factory.create("fake")
+    first = factory.create("stub")
+    second = factory.create("stub")
 
     assert first is not second
 

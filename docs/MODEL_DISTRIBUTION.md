@@ -7,7 +7,6 @@
 | `vieneu-v3` | Bundled bắt buộc | Chọn mặc định, load local trong worker, không Internet. |
 | `vieneu-v2` | Tải tùy chọn | Chỉ tải qua Model Manager sau consent. |
 | `kokoro-vi` | Tải tùy chọn | Chỉ tải qua Model Manager sau consent. |
-| `fake` | Development/test | Không xuất hiện trong production. |
 
 SDK VieNeu mặc định có thể tải model từ Hugging Face, nhưng hỗ trợ local path. Adapter production phải truyền local path và không fallback sang repo ID.
 
@@ -24,8 +23,9 @@ installer/
 ├── vntts.exe
 ├── resources/models/vieneu-v3/
 │   ├── manifest.json
-│   ├── backbone/
-│   ├── codec/
+│   ├── update/
+│   ├── onnx_int8/
+│   ├── moss-tokenizer/
 │   ├── voices/
 │   └── runtime-assets/
 └── licenses/
@@ -53,7 +53,7 @@ Manifest v3 tối thiểu:
   "model_version": "<pinned-version>",
   "source_revision": "<commit-sha>",
   "license": "Apache-2.0",
-  "components": ["backbone", "codec", "voices", "runtime-assets"],
+  "components": ["update", "onnx_int8", "moss-tokenizer", "voices", "runtime-assets"],
   "files": [{"path": "<relative>", "size": 0, "sha256": "<sha256>"}]
 }
 ```
@@ -62,7 +62,7 @@ Manifest v3 tối thiểu:
 - Path phải relative và nằm trong model root.
 - Startup kiểm tra manifest/file bắt buộc; build/Repair kiểm tra checksum đầy đủ.
 - Thiếu/hỏng v3 → báo Repair, không tự tải.
-- Adapter Giai đoạn 2 mới kiểm tra SDK/path bắt buộc; kiểm tra manifest/checksum đầy đủ thuộc Model Manager và release pipeline.
+- Adapter hiện kiểm tra SDK/path bắt buộc; kiểm tra manifest/checksum đầy đủ thuộc Model Manager và release pipeline.
 
 ## 3. Startup offline
 

@@ -5,22 +5,22 @@ from loguru import logger
 
 from vntts.db.models import AudioEffects, EngineSynthesisOptions, SynthesisRequest
 from vntts.engines.factory import EngineFactory, EngineRegistry
-from vntts.engines.fake_engine import FakeTTSEngine
 from vntts.services.synthesis import SynthesizeSpeech
 from vntts.utils.exceptions import EngineNotFoundError, ValidationError
+from tests.stubs import StubTTSEngine
 
 
 def _use_case(max_length: int = 100) -> SynthesizeSpeech:
     registry = EngineRegistry()
     registry.register(
-        "fake",
-        lambda: FakeTTSEngine(processing_delay=0),
-        FakeTTSEngine.INFO,
+        "stub",
+        StubTTSEngine,
+        StubTTSEngine.INFO,
     )
     return SynthesizeSpeech(EngineFactory(registry), registry, max_length)
 
 
-def _request(text: str, engine_id: str = "fake") -> SynthesisRequest:
+def _request(text: str, engine_id: str = "stub") -> SynthesisRequest:
     return SynthesisRequest(
         text=text,
         engine_id=engine_id,

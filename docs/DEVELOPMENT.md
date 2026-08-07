@@ -1,160 +1,88 @@
 # Hướng dẫn Development
 
-Giai đoạn 2 vẫn dùng `FakeTTSEngine` mặc định trong development, đồng thời có adapter thật được đăng ký khi SDK và asset local đầy đủ. Chạy fake không cần model, CUDA, audio device hoặc Internet; cài dependency/chuẩn bị model thật cần Internet ở bước riêng.
+Ứng dụng development chỉ đăng ký VieNeu-TTS v3-Turbo làm engine bắt buộc. Không có engine mô phỏng trong mã nguồn. Khi chưa có model local, VieNeu SDK sử dụng Hugging Face cache và tải model chính thức ở lần chạy đầu; các lần sau có thể dùng cache hiện có.
 
-## 1. Yêu cầu và cài đặt
+## 1. Cài đặt
 
-- Windows 10/11 x64.
-- Python `3.11.x` (`pyproject.toml` khóa `>=3.11,<3.12`).
-- PowerShell và Git.
-
-Từ thư mục gốc:
+Yêu cầu Windows 10/11 x64, Python `3.11.x`, PowerShell và Git.
 
 ```powershell
 py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
-python -m pip install -r requirements/base.txt
 python -m pip install -r requirements/dev.txt
+python -m pip install -r requirements/vieneu.txt
 ```
 
-Nếu không kích hoạt được virtualenv, dùng trực tiếp `.\.venv\Scripts\python.exe` thay cho `python`.
+Nếu dùng NVIDIA CUDA, cài bản PyTorch phù hợp trước khi cài VieNeu, ví dụ cho CUDA 12.8:
 
-## 2. Chạy ứng dụng và test
+```powershell
+python -m pip install torch==2.8.0 torchaudio==2.8.0 --index-url https://download.pytorch.org/whl/cu128
+```
+
+Không cài `hf-gradio`; nếu môi trường cũ có gói này thì gỡ bằng `python -m pip uninstall -y hf-gradio`.
+
+## 2. Chạy ứng dụng
 
 ```powershell
 python -m vntts
-# hoặc
-python -m vntts.main
 ```
 
-Kết quả hiện tại:
+Luồng development:
 
-- Cửa sổ mở với `Fake TTS Engine` và ba giọng giả.
-- Tổng hợp tạo audio NumPy trong worker, không khóa UI.
-- Speed/pitch/volume chỉ được thu thập; DSP chưa chạy.
-- Play/Pause/Stop bị khóa vì chưa có playback.
-- Nếu asset và SDK tương ứng đã có, engine thật xuất hiện trong selector và được load trong worker.
-- Chuyển engine sẽ unload model trước đó; ứng dụng chỉ giữ một model active.
+1. Registry đăng ký `vieneu-v3` và chọn nó làm mặc định.
+2. Nếu `resources/models/vieneu-v3` tồn tại, SDK nạp model từ thư mục đó.
+3. Nếu không có model local, SDK dùng repository `pnnbao-ump/VieNeu-TTS-v3-Turbo`; model đã tải được lấy từ Hugging Face cache, model thiếu sẽ được tải qua Internet.
+4. Thiết bị `auto` chọn CUDA khi PyTorch nhận GPU, nếu không sẽ dùng CPU backend của VieNeu.
+5. Model được load và tổng hợp trong worker để không khóa giao diện.
+6. Waveform mới nhất được chuyển thành WAV PCM trong bộ nhớ để Play/Pause/Stop; buffer cũ được giải phóng khi tổng hợp lại hoặc đóng ứng dụng.
 
-Chạy test:
+Cache mặc định nằm tại `%USERPROFILE%\.cache\huggingface\hub`. Có thể chạy hoàn toàn local trong development bằng cách đặt model vào:
+
+```text
+resources/models/vieneu-v3/
+```
+
+hoặc trỏ tới thư mục model bằng:
+
+```powershell
+$env:VNTTS_BUNDLED_MODELS_DIR = "D:\models"
+python -m vntts
+```
+
+Trong đó model phải nằm tại `D:\models\vieneu-v3`.
+
+## 3. Chạy test
 
 ```powershell
 python -m pytest
-python -m pytest tests/unit
-python -m pytest tests/ui
 ```
 
-Trong CI/headless:
+Test dùng `StubTTSEngine` nằm riêng trong `tests/stubs.py`, do đó unit/UI test không tải model thật. Trong CI/headless:
 
 ```powershell
 $env:QT_QPA_PLATFORM = "offscreen"
 python -m pytest
 ```
 
-## 3. Cấu hình và dữ liệu
+## 4. Cấu hình và dữ liệu
 
 Cấu hình mặc định: `src/vntts/config/default.yaml`.
 
-App-data mặc định trên Windows:
-
-```text
-%LOCALAPPDATA%\VietnameseTTSDesktop\
-├── models\
-└── data\
-    ├── cache\
-    └── logs\
-```
-
-Biến môi trường:
-
 | Biến | Tác dụng |
 |---|---|
-| `VNTTS_APP_DATA_DIR` | Đổi app-data root. |
-| `VNTTS_BUNDLED_MODELS_DIR` | Đổi vùng read-only chứa v3 bundled. |
-| `VNTTS_MODELS_DIR` | Đổi nơi lưu model tùy chọn. |
-| `VNTTS_DATA_DIR` | Đổi data directory. |
-| `VNTTS_CACHE_DIR` | Đổi cache directory. |
-| `VNTTS_LOGS_DIR` | Đổi logs directory. |
+| `VNTTS_BUNDLED_MODELS_DIR` | Thư mục cha chứa `vieneu-v3`. |
+| `VNTTS_MODELS_DIR` | Nơi lưu model tùy chọn. |
 | `VNTTS_ENVIRONMENT` | `development` hoặc `production`. |
-| `VNTTS_LOG_LEVEL` | `DEBUG`, `INFO`, `WARNING`... |
-| `VNTTS_DEFAULT_ENGINE` | Ghi đè engine mặc định để integration test. |
+| `VNTTS_DEFAULT_ENGINE` | Engine mặc định; cấu hình chuẩn là `vieneu-v3`. |
+| `VNTTS_LOG_LEVEL` | Mức log. |
 
 Không commit `.venv`, model, cache, log hoặc dữ liệu người dùng.
 
-## 4. Quy tắc phát triển
+## 5. Xử lý lỗi nhanh
 
-```text
-UI → Services → Engines/DB
-Engines → DB
-```
-
-- `ui/` chứa PySide6 và chỉ điều phối tương tác giao diện.
-- `services/` chứa workflow nghiệp vụ, không import widget Qt.
-- Adapter mới nằm trong `engines/` và triển khai `BaseTTSEngine` từ `engines/base.py`.
-- Registry, factory và lifecycle nằm chung trong `engines/factory.py`.
-- Model dữ liệu thuần Python nằm trong `db/models.py`.
-- Qt worker dùng chung nằm trong `utils/worker.py`; worker không chứa nghiệp vụ.
-- Registry giữ provider; không load model ở lúc liệt kê engine.
-- Không đưa nghiệp vụ vào `MainWindow`/`MainViewModel`.
-- Không log toàn bộ text, audio, waveform hoặc mẫu giọng.
-- Thay đổi contract/cấu trúc phải cập nhật Architecture và test.
-
-## 5. Kiểm tra trước commit
-
-1. `python -m pytest` pass.
-2. `python -m vntts` mở được cửa sổ.
-3. Không có model/log/cache/dữ liệu cá nhân trong Git.
-4. Không có SDK hoặc dependency ngoài phạm vi.
-5. UI không hiển thị traceback.
-
-## 6. Lỗi thường gặp
-
-### Sai Python
-
-```powershell
-python --version
-python -c "import sys; print(sys.executable)"
-```
-
-Phải trỏ tới Python 3.11 trong `.venv`.
-
-### Không import được `vntts`
-
-```powershell
-python -m pip install -r requirements/base.txt
-```
-
-### UI test lỗi trong headless
-
-```powershell
-$env:QT_QPA_PLATFORM = "offscreen"
-python -m pytest tests/ui
-```
-
-### Chạy adapter thật
-
-VieNeu và Kokoro là dependency tùy chọn, không nằm trong `base.txt`:
-
-```powershell
-python -m pip install -r requirements/vieneu.txt
-# hoặc
-python -m pip install -r requirements/kokoro.txt
-```
-
-Đặt model theo layout:
-
-```text
-resources/models/vieneu-v3/{backbone,codec}/
-%LOCALAPPDATA%/VietnameseTTSDesktop/models/vieneu-v2/{backbone,codec}/
-%LOCALAPPDATA%/VietnameseTTSDesktop/models/kokoro-vi/
-├── kokoro_vi.pth
-├── config.json
-└── voicepacks/*.pt
-```
-
-Adapter không tải model. Nếu thiếu SDK/file, engine tùy chọn không được đăng ký; riêng production vẫn đăng ký v3 để hiển thị lỗi bundle/Repair rõ ràng.
-
-### Không phát hiện CUDA
-
-PyTorch vẫn là dependency tùy chọn theo engine. Khi thiếu PyTorch/CUDA, detector trả `cuda_available=False` và development bằng fake engine vẫn chạy. Không thêm một bản Torch CUDA cố định vào requirements nền tảng; developer cài bản phù hợp với runtime/máy đích.
+- Không import được `vntts`: chạy `python -m pip install -r requirements/base.txt`.
+- Không import được `vieneu`: chạy `python -m pip install -r requirements/vieneu.txt`.
+- Không thấy CUDA: kiểm tra `python -c "import torch; print(torch.cuda.is_available(), torch.version.cuda)"`.
+- Lỗi dependency: chạy `python -m pip check`, gỡ `hf-gradio` nếu còn trong môi trường cũ.
+- Lần đầu đứng lâu ở bước load: kiểm tra Internet và dung lượng đĩa vì SDK đang tải model/tokenizer.

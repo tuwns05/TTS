@@ -6,6 +6,8 @@
 
 - Nhập văn bản tiếng Việt và chọn engine/giọng đọc.
 - Chạy tác vụ tổng hợp trong worker nền để không khóa giao diện Qt.
+- Giữ waveform vừa tổng hợp và hỗ trợ Play/Pause/Stop bằng Qt Multimedia.
+- Giao diện tự chuyển giữa bố cục rộng, compact và dọc; có thanh cuộn khi cửa sổ nhỏ.
 - Hỗ trợ adapter local cho VieNeu-TTS v3-Turbo, VieNeu-TTS v2-Turbo và Kokoro-Vietnamese.
 - Chỉ giữ một model active; khi chuyển engine, model trước được unload để kiểm soát RAM/VRAM.
 - Phát hiện CPU, RAM và CUDA GPU để đưa ra khuyến nghị engine có giải thích.
@@ -19,14 +21,14 @@
 | `VieNeu-TTS v3-Turbo` | Đóng cùng bản production | CPU hoặc CUDA GPU | Engine mặc định production, model local, 48 kHz. |
 | `VieNeu-TTS v2-Turbo` | Model tùy chọn | CPU | Dùng backbone/codec local, 24 kHz. |
 | `Kokoro-Vietnamese` | Model tùy chọn | CPU | Dùng model, config và voicepack local. |
-| `FakeTTSEngine` | Development/test | CPU | Không được phân phối trong bản production. |
 
 Khuyến nghị phần cứng không tự động ép đổi engine. Người dùng vẫn có thể chọn một engine khác trong số các engine đã được cài đặt và đăng ký thành công.
 
 ## Hoạt động offline
 
+- Development luôn dùng VieNeu-TTS v3-Turbo. Nếu chưa có model tại `resources/models/vieneu-v3`, SDK dùng Hugging Face cache và tải model chính thức ở lần chạy đầu.
 - Bản production phải chứa sẵn VieNeu-TTS v3-Turbo để sử dụng ngay lần mở đầu mà không cần Internet.
-- V3 được đọc từ local path; adapter không fallback sang repository ID hoặc tự tải model khi startup.
+- Ở production, v3 chỉ được đọc từ local path; adapter không fallback sang repository ID hoặc tự tải model khi startup.
 - V2 và Kokoro là model tùy chọn, được lưu trong app-data sau khi người dùng chủ động cài đặt.
 - Ứng dụng không tự tải model khi khởi động hoặc khi khuyến nghị phần cứng thay đổi.
 - Mẫu giọng, văn bản và audio không được ghi đầy đủ vào log.
@@ -86,8 +88,9 @@ VieNeu v3 dùng trong source/internal build:
 resources/
 └── models/
     └── vieneu-v3/
-        ├── backbone/
-        └── codec/
+        ├── update/
+        ├── onnx_int8/
+        └── moss-tokenizer/
 ```
 
 Model tùy chọn trên Windows:

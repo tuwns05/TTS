@@ -1,4 +1,6 @@
-# Optional Phase 2 runtime for VieNeu v3/v2 adapters.
+# VieNeu v3 runtime used by the development application.
 # Install a PyTorch build compatible with the target CPU/CUDA runtime first.
 -r base.txt
-vieneu>=3.0,<4
+vieneu>=3.2.4,<3.3
+gradio==5.49.1
+huggingface-hub==0.36.2

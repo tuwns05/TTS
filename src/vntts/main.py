@@ -10,7 +10,6 @@ from PySide6.QtWidgets import QApplication
 
 from vntts.config.settings import Settings, load_settings
 from vntts.engines.factory import EngineFactory, EngineLifecycleManager, EngineRegistry
-from vntts.engines.fake_engine import FakeTTSEngine
 from vntts.engines.kokoro_engine import KokoroVIEngine
 from vntts.engines.vieneu_engine import VieNeuV2Engine, VieNeuV3Engine
 from vntts.services.hardware import EngineRecommendationService, HardwareDetector
@@ -21,7 +20,7 @@ from vntts.utils.logger import configure_logging, shutdown_logging
 
 
 def build_application(argv: Sequence[str] | None = None) -> tuple[QApplication, MainWindow]:
-    """Compose Phase 2 adapters lazily without loading models on the UI thread."""
+    """Compose engine adapters lazily without loading models on the UI thread."""
 
     settings: Settings = load_settings()
     configure_logging(settings)
@@ -33,9 +32,13 @@ def build_application(argv: Sequence[str] | None = None) -> tuple[QApplication, 
     optional_v2 = settings.paths.models_dir / "vieneu-v2"
     optional_kokoro = settings.paths.models_dir / "kokoro-vi"
 
+    is_production = settings.application.environment.strip().lower() == "production"
+    local_v3 = bundled_v3 if bundled_v3.is_dir() else None
+    local_v3_tokenizer = bundled_v3 / "moss-tokenizer"
     v3_provider = lambda: VieNeuV3Engine(  # noqa: E731
-        bundled_v3 / "backbone",
-        bundled_v3 / "codec",
+        local_v3,
+        tokenizer_path=(local_v3_tokenizer if local_v3_tokenizer.is_dir() else None),
+        allow_download=not is_production,
     )
     v2_provider = lambda: VieNeuV2Engine(  # noqa: E731
         optional_v2 / "backbone",
@@ -47,15 +50,12 @@ def build_application(argv: Sequence[str] | None = None) -> tuple[QApplication, 
         optional_kokoro / "voicepacks",
     )
 
-    is_production = settings.application.environment.strip().lower() == "production"
-    v3_probe = v3_provider()
-    if is_production or v3_probe.is_available():
-        registry.register(
-            VieNeuV3Engine.INFO.engine_id,
-            v3_provider,
-            VieNeuV3Engine.INFO,
-            VieNeuV3Engine.CAPABILITIES,
-        )
+    registry.register(
+        VieNeuV3Engine.INFO.engine_id,
+        v3_provider,
+        VieNeuV3Engine.INFO,
+        VieNeuV3Engine.CAPABILITIES,
+    )
     for provider, info, capabilities in (
         (v2_provider, VieNeuV2Engine.INFO, VieNeuV2Engine.CAPABILITIES),
         (kokoro_provider, KokoroVIEngine.INFO, KokoroVIEngine.CAPABILITIES),
@@ -63,13 +63,6 @@ def build_application(argv: Sequence[str] | None = None) -> tuple[QApplication, 
         if provider().is_available():
             registry.register(info.engine_id, provider, info, capabilities)
 
-    if not is_production:
-        registry.register(
-            FakeTTSEngine.INFO.engine_id,
-            lambda: FakeTTSEngine(sample_rate=settings.audio.default_sample_rate),
-            FakeTTSEngine.INFO,
-            FakeTTSEngine.CAPABILITIES,
-        )
     factory = EngineFactory(registry)
     lifecycle = EngineLifecycleManager(factory)
     use_case = SynthesizeSpeech(

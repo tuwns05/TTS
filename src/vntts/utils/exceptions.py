@@ -25,10 +25,13 @@ class SynthesisError(AppError):
     """Raised when speech synthesis fails."""
 
 
+class PlaybackError(AppError):
+    """Raised when synthesized audio cannot be prepared or played."""
+
+
 class ValidationError(AppError):
     """Raised when user or domain input is invalid."""
 
 
 class HardwareDetectionError(AppError):
     """Raised when essential hardware information cannot be collected."""
-

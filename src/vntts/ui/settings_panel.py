@@ -1,10 +1,17 @@
-"""Voice and future DSP controls."""
+"""Voice selection and compact audio adjustment controls."""
 
+from __future__ import annotations
+
+from collections.abc import Callable
+
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox,
-    QDoubleSpinBox,
-    QFormLayout,
+    QGridLayout,
     QGroupBox,
+    QLabel,
+    QSlider,
+    QVBoxLayout,
     QWidget,
 )
 
@@ -13,40 +20,100 @@ from vntts.db.models import AudioEffects, VoiceInfo
 
 
 class VoiceSettingsWidget(QGroupBox):
-    """Collect voice and audio-effect values without applying DSP."""
+    """Collect voice and audio-effect values in an accessible card."""
 
     def __init__(self, defaults: AudioSettings, parent: QWidget | None = None) -> None:
         super().__init__("Thiết lập giọng", parent)
+        self.setObjectName("voiceSettingsCard")
+
+        voice_label = QLabel("Giọng đọc", self)
+        voice_label.setObjectName("fieldLabel")
         self.voice_combo = QComboBox(self)
         self.voice_combo.setObjectName("voiceCombo")
+        self.voice_combo.setAccessibleName("Giọng đọc")
         self.voice_combo.setEnabled(False)
+        self.voice_combo.setMinimumHeight(44)
 
-        self.speed_spin = QDoubleSpinBox(self)
-        self.speed_spin.setObjectName("speedSpin")
-        self.speed_spin.setRange(0.5, 2.0)
-        self.speed_spin.setSingleStep(0.1)
-        self.speed_spin.setSuffix("x")
-        self.speed_spin.setValue(defaults.default_speed)
+        self.speed_slider, self.speed_value = self._slider(
+            "Tốc độ",
+            5,
+            20,
+            round(defaults.default_speed * 10),
+            lambda value: f"{value / 10:.1f}×",
+        )
+        self.speed_slider.setObjectName("speedSlider")
+        self.pitch_slider, self.pitch_value = self._slider(
+            "Cao độ",
+            -12,
+            12,
+            round(defaults.default_pitch_semitones),
+            lambda value: f"{value:+d} st",
+        )
+        self.pitch_slider.setObjectName("pitchSlider")
+        self.volume_slider, self.volume_value = self._slider(
+            "Âm lượng",
+            -60,
+            12,
+            round(defaults.default_volume_db),
+            lambda value: f"{value:+d} dB",
+        )
+        self.volume_slider.setObjectName("volumeSlider")
 
-        self.pitch_spin = QDoubleSpinBox(self)
-        self.pitch_spin.setObjectName("pitchSpin")
-        self.pitch_spin.setRange(-12.0, 12.0)
-        self.pitch_spin.setSingleStep(1.0)
-        self.pitch_spin.setSuffix(" semitone")
-        self.pitch_spin.setValue(defaults.default_pitch_semitones)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 24, 16, 16)
+        layout.setSpacing(8)
+        layout.addWidget(voice_label)
+        layout.addWidget(self.voice_combo)
+        layout.addSpacing(8)
+        layout.addLayout(
+            self._slider_row("Tốc độ", self.speed_slider, self.speed_value)
+        )
+        layout.addLayout(
+            self._slider_row("Cao độ", self.pitch_slider, self.pitch_value)
+        )
+        layout.addLayout(
+            self._slider_row("Âm lượng", self.volume_slider, self.volume_value)
+        )
 
-        self.volume_spin = QDoubleSpinBox(self)
-        self.volume_spin.setObjectName("volumeSpin")
-        self.volume_spin.setRange(-60.0, 12.0)
-        self.volume_spin.setSingleStep(1.0)
-        self.volume_spin.setSuffix(" dB")
-        self.volume_spin.setValue(defaults.default_volume_db)
+    def _slider(
+        self,
+        name: str,
+        minimum: int,
+        maximum: int,
+        value: int,
+        formatter: Callable[[int], str],
+    ) -> tuple[QSlider, QLabel]:
+        slider = QSlider(Qt.Orientation.Horizontal, self)
+        slider.setObjectName(name.replace(" ", "").lower() + "Slider")
+        slider.setAccessibleName(name)
+        slider.setRange(minimum, maximum)
+        slider.setValue(value)
+        slider.setMinimumHeight(44)
+        value_label = QLabel(formatter(value), self)
+        value_label.setObjectName("metricValue")
+        value_label.setMinimumWidth(56)
+        value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        slider.valueChanged.connect(
+            lambda current, label=value_label: label.setText(formatter(current))
+        )
+        return slider, value_label
 
-        layout = QFormLayout(self)
-        layout.addRow("Giọng đọc", self.voice_combo)
-        layout.addRow("Tốc độ", self.speed_spin)
-        layout.addRow("Cao độ", self.pitch_spin)
-        layout.addRow("Âm lượng", self.volume_spin)
+    def _slider_row(
+        self,
+        label: str,
+        slider: QSlider,
+        value_label: QLabel,
+    ) -> QGridLayout:
+        layout = QGridLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setHorizontalSpacing(8)
+        layout.setVerticalSpacing(0)
+        title = QLabel(label, self)
+        title.setObjectName("fieldLabel")
+        layout.addWidget(title, 0, 0)
+        layout.addWidget(value_label, 0, 1)
+        layout.addWidget(slider, 1, 0, 1, 2)
+        return layout
 
     def set_voices(self, voices: list[VoiceInfo]) -> None:
         """Replace available voices and enable selection when non-empty."""
@@ -66,7 +133,7 @@ class VoiceSettingsWidget(QGroupBox):
         """Build validated controls for the synthesis request."""
 
         return AudioEffects(
-            speed=self.speed_spin.value(),
-            pitch_semitones=self.pitch_spin.value(),
-            volume_db=self.volume_spin.value(),
+            speed=self.speed_slider.value() / 10,
+            pitch_semitones=float(self.pitch_slider.value()),
+            volume_db=float(self.volume_slider.value()),
         )

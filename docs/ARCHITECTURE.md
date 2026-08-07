@@ -58,7 +58,7 @@ Engines → DB
 - `ui/` không import trực tiếp SDK VieNeu/Kokoro.
 - Adapter trong `engines/` chuyển exception SDK thành `AppError`.
 - `main.py` chỉ khởi tạo/inject dependency.
-- Dependency nghiệp vụ được truyền qua constructor để test bằng fake/mock.
+- Dependency nghiệp vụ được truyền qua constructor để test bằng stub/mock.
 
 ## 3. Trách nhiệm chính
 
@@ -70,7 +70,7 @@ Engines → DB
 | Nghiệp vụ | `SynthesizeSpeech` | Validate text/engine/voice, load engine khi cần và tổng hợp. |
 | Nghiệp vụ | `EngineRecommendationService` | Trả khuyến nghị kèm lý do; không ép lựa chọn. |
 | Dữ liệu/tích hợp | `BaseTTSEngine`, registry/factory/lifecycle | Định nghĩa contract và quản lý vòng đời adapter. |
-| Dữ liệu/tích hợp | Engine adapters | Tích hợp VieNeu/Kokoro/fake sau `BaseTTSEngine`. |
+| Dữ liệu/tích hợp | Engine adapters | Tích hợp VieNeu/Kokoro sau `BaseTTSEngine`. |
 | Dữ liệu | `db.models` | Kiểu dữ liệu thuần Python dùng xuyên suốt workflow. |
 
 Worker Qt dùng chung chỉ nằm trong `utils/worker.py`; worker không tự chứa nghiệp vụ.
@@ -80,7 +80,7 @@ Pattern sử dụng:
 - **Adapter:** cô lập từng SDK sau `BaseTTSEngine`.
 - **Registry/Factory:** đăng ký lazy provider và tạo engine theo ID, không load model lúc startup.
 - **Worker Thread:** chạy tác vụ nặng ngoài UI thread, trả kết quả qua signal.
-- **Constructor Injection:** thay dependency bằng fake/mock khi test.
+- **Constructor Injection:** thay dependency bằng stub/mock khi test.
 - **Repository:** sẽ tách service khỏi SQLite/filesystem khi persistence được triển khai.
 
 ## 4. Contract engine
@@ -150,7 +150,6 @@ Capability Giai đoạn 2 phản ánh phần API **đã được adapter cung c�
 | `VieNeuV3Engine` | Có | Có | Có | Có, reference audio local | Không | Không |
 | `VieNeuV2Engine` | Có | Có | Không | Không | Không | Không |
 | `KokoroVIEngine` | Có, theo voicepack local | Có | Không | Không | Không | Không |
-| `FakeTTSEngine` | Có, giả lập | Có | Không | Không | Không | Không |
 
 Adapter v3 hỗ trợ cloning tức thời bằng `reference_audio_path` local theo API v3; UI quản lý hồ sơ giọng vẫn thuộc Giai đoạn 6. V2 được cấu hình theo biến thể GGUF/CPU của sản phẩm và không mở cloning. Streaming/native speed chỉ được bật khi contract và pipeline thực sự sử dụng chúng.
 
@@ -187,7 +186,7 @@ sequenceDiagram
     end
 ```
 
-Giai đoạn 2 chạy tới raw audio thật khi SDK và asset local đã được cài; development vẫn dùng raw audio giả. DSP và playback chưa triển khai. Khi triển khai, speed/pitch chỉ được xử lý **một lần**: native engine hoặc DSP, không đồng thời cả hai.
+VieNeu v3 trả về raw audio thật khi SDK và model đã sẵn sàng. Playback giữ WAV PCM trong bộ nhớ và điều khiển Qt Multimedia; DSP chưa triển khai. Khi triển khai DSP, speed/pitch chỉ được xử lý **một lần**: native engine hoặc DSP, không đồng thời cả hai.
 
 ## 7. Quyết định nghiệp vụ quan trọng
 
@@ -254,7 +253,6 @@ TTS/
 │       │   ├── __init__.py
 │       │   ├── base.py
 │       │   ├── factory.py
-│       │   ├── fake_engine.py
 │       │   ├── kokoro_engine.py
 │       │   └── vieneu_engine.py
 │       ├── services/
@@ -284,7 +282,6 @@ TTS/
 │   │   ├── test_engine_lifecycle_manager.py
 │   │   ├── test_engine_recommendation.py
 │   │   ├── test_engine_registry.py
-│   │   ├── test_fake_engine.py
 │   │   ├── test_hardware_detector.py
 │   │   ├── test_kokoro_vi_engine.py
 │   │   ├── test_settings.py
@@ -317,15 +314,15 @@ Không tạo các module roadmap rỗng. `clone_view.py`, `library_view.py`, `do
 | `__main__.py` | Delegator tối thiểu để giữ lệnh `python -m vntts`; logic khởi chạy vẫn ở `main.py`. |
 | `config/settings.py` | Dataclass cấu hình, merge YAML/env, chuẩn hóa path và tạo thư mục runtime. |
 | `config/default.yaml` | Giá trị mặc định development/production, đường dẫn, audio, phần cứng và logging. |
-| `ui/main_window.py` | Ghép layout cửa sổ chính, nối signal và phản ánh trạng thái UI. |
+| `ui/main_window.py` | Ghép layout cửa sổ chính, đổi bố cục theo breakpoint, nối signal và phản ánh trạng thái UI. |
 | `ui/compose_view.py` | `MainViewModel`, engine selector, ô nhập văn bản và playback controls hiện tại. |
 | `ui/settings_panel.py` | Widget chọn giọng cùng các giá trị speed/pitch/volume. |
 | `ui/resources/` | Tài nguyên giao diện đóng gói cùng package; hiện chứa `styles.qss`. |
 | `engines/base.py` | `BaseTTSEngine`, `EngineCapabilities` và chuẩn hóa waveform dùng chung. |
+| `services/playback.py` | Giữ waveform/WAV PCM trong bộ nhớ, điều khiển Qt Multimedia và giải phóng tài nguyên. |
 | `engines/factory.py` | Registry provider lazy, factory tạo adapter và lifecycle bảo đảm tối đa một model active. |
 | `engines/vieneu_engine.py` | Implementation dùng chung cùng hai public adapter VieNeu v2/v3. |
 | `engines/kokoro_engine.py` | Adapter Kokoro-Vietnamese local-only và quản lý voicepack. |
-| `engines/fake_engine.py` | Adapter offline dành cho development và tests. |
 | `services/synthesis.py` | Use case validate request, chuẩn bị engine và thực thi synthesis. |
 | `services/hardware.py` | Phát hiện CPU/RAM/GPU và policy khuyến nghị engine. |
 | `db/models.py` | Dataclass/constant dữ liệu TTS, audio, voice, hardware và recommendation. |
