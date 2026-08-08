@@ -6,7 +6,6 @@ import pytest
 from loguru import logger
 
 from vntts.config.settings import Settings, load_settings
-from vntts.utils.exceptions import ConfigurationError
 from vntts.utils.logger import configure_logging
 
 
@@ -32,14 +31,6 @@ def test_environment_path_override_is_respected(
 
     assert result.paths.cache_dir == custom_cache.resolve()
     assert custom_cache.is_dir()
-
-
-def test_invalid_yaml_configuration_raises_app_error(tmp_path: Path) -> None:
-    config = tmp_path / "invalid.yaml"
-    config.write_text("tts:\n  max_text_length: invalid\n", encoding="utf-8")
-
-    with pytest.raises(ConfigurationError, match="max_text_length"):
-        load_settings(config, create_directories=False)
 
 
 def test_production_defaults_to_bundled_vieneu_v3(

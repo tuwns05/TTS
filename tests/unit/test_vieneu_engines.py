@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from vntts.db.models import AudioEffects, EngineSynthesisOptions
+from vntts.db.models import EngineSynthesisOptions
 from vntts.engines.vieneu_engine import VieNeuV2Engine, VieNeuV3Engine
 from vntts.utils.exceptions import EngineLoadError, ValidationError
 
@@ -15,7 +15,12 @@ class _VieNeuRuntime:
         self.closed = False
 
     def list_preset_voices(self) -> list[tuple[str, str]]:
-        return [("Bác sĩ Tuyền", "bac_si_tuyen")]
+        return [
+            (
+                "Bác sĩ Tuyền — Nữ · Bắc · Phong cách tin tức",
+                "bac_si_tuyen",
+            )
+        ]
 
     def get_preset_voice(self, voice_name: str) -> object:
         return {"id": voice_name}
@@ -61,6 +66,7 @@ def test_vieneu_v2_load_uses_only_local_paths(
         }
     ]
     assert engine.list_voices()[0].voice_id == "bac_si_tuyen"
+    assert engine.list_voices()[0].display_name == "Bác sĩ Tuyền — Nữ · Bắc"
     result = engine.synthesize("Xin chào", EngineSynthesisOptions("bac_si_tuyen"))
     assert result.audio.dtype == np.float32
     assert result.audio.ndim == 1
@@ -160,11 +166,12 @@ def test_vieneu_v3_passes_local_reference_audio(
     assert calls[-1] == {
         "text": "Xin chào",
         "ref_audio": str(reference.resolve()),
+        "style": "tu_nhien",
     }
     assert result.sample_rate == 48_000
 
 
-def test_vieneu_v3_forwards_audio_effects_to_runtime(tmp_path: Path) -> None:
+def test_vieneu_v3_only_passes_supported_arguments_to_runtime(tmp_path: Path) -> None:
     model_path = tmp_path / "vieneu-v3"
     model_path.mkdir()
     tokenizer_path = model_path / "moss-tokenizer"
@@ -183,12 +190,40 @@ def test_vieneu_v3_forwards_audio_effects_to_runtime(tmp_path: Path) -> None:
     )
     engine.load("cpu")
 
-    effects = AudioEffects(speed=1.25, pitch_semitones=2.0, volume_db=-3.0)
-    engine.synthesize("Xin chào", EngineSynthesisOptions("bac_si_tuyen"), effects)
+    engine.synthesize("Xin chào", EngineSynthesisOptions("bac_si_tuyen"))
 
-    assert calls[-1]["speed"] == 1.25
-    assert calls[-1]["pitch"] == 2.0
-    assert calls[-1]["volume"] == -3.0
+    assert calls[-1] == {
+        "text": "Xin chào",
+        "voice": {"id": "bac_si_tuyen"},
+        "style": "tu_nhien",
+    }
+
+
+def test_vieneu_v3_passes_selected_speaking_style(tmp_path: Path) -> None:
+    model_path = tmp_path / "vieneu-v3"
+    model_path.mkdir()
+    tokenizer_path = model_path / "moss-tokenizer"
+    tokenizer_path.mkdir()
+    calls: list[dict[str, object]] = []
+
+    class Runtime(_VieNeuRuntime):
+        def infer(self, **kwargs: object) -> np.ndarray:
+            calls.append(kwargs)
+            return super().infer(**kwargs)
+
+    engine = VieNeuV3Engine(
+        model_path,
+        tokenizer_path=tokenizer_path,
+        sdk_factory=lambda **_: Runtime(),
+    )
+    engine.load("cpu")
+
+    engine.synthesize(
+        "Bản tin hôm nay",
+        EngineSynthesisOptions("bac_si_tuyen", style_id="tin_tuc"),
+    )
+
+    assert calls[-1]["style"] == "tin_tuc"
 
 
 def test_vieneu_v2_rejects_reference_audio(
@@ -216,5 +251,10 @@ def test_capabilities_match_adapter_contract() -> None:
     assert VieNeuV3Engine.CAPABILITIES.cpu_supported
     assert VieNeuV3Engine.CAPABILITIES.gpu_supported
     assert VieNeuV3Engine.CAPABILITIES.voice_cloning
+    assert VieNeuV3Engine.CAPABILITIES.supported_style_ids == (
+        "tu_nhien",
+        "tin_tuc",
+        "doc_truyen",
+    )
     assert not VieNeuV2Engine.CAPABILITIES.gpu_supported
     assert not VieNeuV2Engine.CAPABILITIES.streaming

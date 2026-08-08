@@ -11,7 +11,6 @@ from typing import Protocol
 
 from vntts.db.models import (
     KOKORO_VI_ENGINE_ID,
-    AudioEffects,
     EngineInfo,
     EngineSynthesisOptions,
     SynthesisResult,
@@ -20,7 +19,6 @@ from vntts.db.models import (
 from vntts.engines.base import (
     BaseTTSEngine,
     EngineCapabilities,
-    build_runtime_call_kwargs,
     to_mono_float32,
 )
 from vntts.utils.exceptions import (
@@ -166,7 +164,6 @@ class KokoroVIEngine(BaseTTSEngine):
         self,
         text: str,
         options: EngineSynthesisOptions,
-        effects: AudioEffects | None = None,
     ) -> SynthesisResult:
         if self._runtime is None:
             raise EngineNotLoadedError("Kokoro-Vietnamese chưa được load.")
@@ -180,13 +177,7 @@ class KokoroVIEngine(BaseTTSEngine):
             self._load_voice(options.voice_id)
 
         try:
-            kwargs = build_runtime_call_kwargs(
-                runtime=self._runtime,
-                method_name="synthesize",
-                text=text.strip(),
-                effects=effects,
-            )
-            output = self._runtime.synthesize(**kwargs)
+            output = self._runtime.synthesize(text=text.strip())
             audio = output[0] if isinstance(output, tuple) else output
         except Exception as exc:
             raise SynthesisError("Kokoro-Vietnamese không thể tổng hợp giọng nói.") from exc

@@ -27,7 +27,6 @@ _SAFE_DEFAULTS: dict[str, object] = {
     "tts": {
         "default_engine": "vieneu-v3",
         "production_default_engine": "vieneu-v3",
-        "max_text_length": 10_000,
     },
     "audio": {
         "default_speed": 1.0,
@@ -64,10 +63,9 @@ class PathSettings:
 
 @dataclass(frozen=True)
 class TTSSettings:
-    """Cross-engine synthesis limits."""
+    """Cross-engine synthesis settings."""
 
     default_engine: str
-    max_text_length: int
 
 
 @dataclass(frozen=True)
@@ -210,7 +208,6 @@ def load_settings(config_path: Path | None = None, *, create_directories: bool =
     if not isinstance(default_engine, str) or not default_engine.strip():
         raise ConfigurationError("Engine mặc định không được để trống.")
 
-    max_text_length = int(_number(tts.get("max_text_length"), "tts.max_text_length", positive=True))
     sample_rate = int(_number(audio.get("default_sample_rate"), "audio.default_sample_rate", positive=True))
     retention_days = int(_number(logging_config.get("retention_days"), "logging.retention_days", positive=True))
     level_value = os.getenv("VNTTS_LOG_LEVEL") or logging_config.get("level")
@@ -220,7 +217,7 @@ def load_settings(config_path: Path | None = None, *, create_directories: bool =
     settings = Settings(
         application=ApplicationSettings(application_name, environment),
         paths=PathSettings(**normalized_paths),
-        tts=TTSSettings(default_engine, max_text_length),
+        tts=TTSSettings(default_engine),
         audio=AudioSettings(
             _number(audio.get("default_speed"), "audio.default_speed"),
             _number(audio.get("default_pitch_semitones"), "audio.default_pitch_semitones"),

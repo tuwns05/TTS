@@ -29,6 +29,10 @@ class PlaybackError(AppError):
     """Raised when synthesized audio cannot be prepared or played."""
 
 
+class DocumentImportError(AppError):
+    """Raised when a supported document cannot be converted to plain text."""
+
+
 class ValidationError(AppError):
     """Raised when user or domain input is invalid."""
 

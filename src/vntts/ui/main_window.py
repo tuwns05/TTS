@@ -4,6 +4,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QCloseEvent, QResizeEvent
 from PySide6.QtWidgets import (
     QBoxLayout,
+    QFileDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -17,6 +18,7 @@ from PySide6.QtWidgets import (
 from vntts.config.settings import Settings
 from vntts.config.theme import build_stylesheet
 from vntts.db.models import SynthesisResult
+from vntts.services.document_import import ImportedDocument
 from vntts.services.playback import PlaybackService
 from vntts.utils.exceptions import PlaybackError
 from vntts.ui.compose_view import (
@@ -26,7 +28,7 @@ from vntts.ui.compose_view import (
     TextInputWidget,
     WaveformPreview,
 )
-from vntts.ui.settings_panel import VoiceSettingsWidget
+from vntts.ui.settings_panel import VoiceSelectorWidget, VoiceStyleWidget
 
 
 class MainWindow(QMainWindow):
@@ -48,9 +50,10 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(640, 560)
         self._responsive_mode = ""
 
-        self.text_input = TextInputWidget(settings.tts.max_text_length, self)
+        self.text_input = TextInputWidget(self)
         self.engine_selector = EngineSelector(self)
-        self.voice_settings = VoiceSettingsWidget(settings.audio, self)
+        self.voice_selector = VoiceSelectorWidget(self)
+        self.voice_style = VoiceStyleWidget(settings.audio, self)
         self.playback_controls = PlaybackControls(self)
         self.waveform = WaveformPreview(self)
         self.synthesize_button = QPushButton("Tạo giọng nói", self)
@@ -64,10 +67,10 @@ class MainWindow(QMainWindow):
         self.cancel_button.setMinimumHeight(48)
         self.cancel_button.setEnabled(False)
         self.cancel_button.hide()
-        self.status_label = QLabel("Chưa có audio", self)
+        self.status_label = QLabel("●  Chưa có audio", self)
         self.status_label.setObjectName("statusLabel")
         self.status_label.setProperty("state", "neutral")
-        self.status_label.setWordWrap(True)
+        self.status_label.setWordWrap(False)
 
         actions = QHBoxLayout()
         actions.setContentsMargins(0, 8, 0, 0)
@@ -90,7 +93,8 @@ class MainWindow(QMainWindow):
         self._settings_layout.setContentsMargins(0, 0, 0, 0)
         self._settings_layout.setSpacing(16)
         self._settings_layout.addWidget(self.engine_selector)
-        self._settings_layout.addWidget(self.voice_settings)
+        self._settings_layout.addWidget(self.voice_selector)
+        self._settings_layout.addWidget(self.voice_style)
         self._settings_layout.addStretch()
         self._settings_container.setLayout(self._settings_layout)
 
@@ -127,23 +131,30 @@ class MainWindow(QMainWindow):
 
         self._player_card = QFrame(self)
         self._player_card.setObjectName("playerCard")
+        self._player_card.setMinimumHeight(190)
         player_title = QLabel("Bản nghe thử", self)
-        player_title.setObjectName("sectionTitle")
+        player_title.setObjectName("playerTitle")
         self._player_header = QBoxLayout(QBoxLayout.Direction.LeftToRight)
         self._player_header.setContentsMargins(0, 0, 0, 0)
         self._player_header.addWidget(player_title)
         self._player_header.addStretch()
         self._player_header.addWidget(self.status_label)
         self._player_layout = QVBoxLayout(self._player_card)
-        self._player_layout.setContentsMargins(22, 18, 22, 18)
-        self._player_layout.setSpacing(12)
+        self._player_layout.setContentsMargins(38, 28, 38, 26)
+        self._player_layout.setSpacing(20)
         self._player_layout.addLayout(self._player_header)
         self._player_body = QBoxLayout(QBoxLayout.Direction.LeftToRight)
         self._player_body.setContentsMargins(0, 0, 0, 0)
-        self._player_body.setSpacing(16)
+        self._player_body.setSpacing(20)
         self._player_body.addWidget(self.playback_controls)
         self._player_body.addWidget(self.waveform, 1)
         self._player_layout.addLayout(self._player_body)
+        self._player_hint = QLabel(
+            "Bấm hoặc kéo trên dải sóng để tua đến vị trí bất kỳ.",
+            self,
+        )
+        self._player_hint.setObjectName("playerHint")
+        self._player_layout.addWidget(self._player_hint)
 
         self._header_divider = QFrame(self)
         self._header_divider.setObjectName("sectionDivider")
@@ -201,12 +212,14 @@ class MainWindow(QMainWindow):
             self._player_header.setDirection(QBoxLayout.Direction.LeftToRight)
             self._root_layout.setContentsMargins(24, 24, 24, 24)
             self._composer_layout.setContentsMargins(24, 24, 24, 24)
+            self._player_layout.setContentsMargins(38, 28, 38, 26)
             self._header_layout.setSpacing(16)
             self._player_body.setDirection(QBoxLayout.Direction.LeftToRight)
             self._workspace_layout.setStretch(0, 2)
             self._workspace_layout.setStretch(1, 1)
             self._settings_layout.setStretch(0, 0)
             self._settings_layout.setStretch(1, 0)
+            self._settings_layout.setStretch(2, 0)
             self.text_input.editor.setMinimumHeight(280)
             self.waveform.setMinimumHeight(52)
             self.status_label.setMaximumWidth(480)
@@ -217,6 +230,7 @@ class MainWindow(QMainWindow):
         self._workspace_layout.setStretch(1, 0)
         self._root_layout.setContentsMargins(16, 16, 16, 16)
         self._composer_layout.setContentsMargins(16, 16, 16, 16)
+        self._player_layout.setContentsMargins(24, 22, 24, 22)
         self._header_layout.setSpacing(12)
         self.text_input.editor.setMinimumHeight(220 if mode == "compact" else 200)
         self.waveform.setMinimumHeight(52)
@@ -225,6 +239,7 @@ class MainWindow(QMainWindow):
             self._settings_layout.setDirection(QBoxLayout.Direction.LeftToRight)
             self._settings_layout.setStretch(0, 1)
             self._settings_layout.setStretch(1, 1)
+            self._settings_layout.setStretch(2, 1)
             self._header_layout.setDirection(QBoxLayout.Direction.LeftToRight)
             self._player_header.setDirection(QBoxLayout.Direction.LeftToRight)
             self._player_body.setDirection(QBoxLayout.Direction.LeftToRight)
@@ -234,6 +249,7 @@ class MainWindow(QMainWindow):
         self._settings_layout.setDirection(QBoxLayout.Direction.TopToBottom)
         self._settings_layout.setStretch(0, 0)
         self._settings_layout.setStretch(1, 0)
+        self._settings_layout.setStretch(2, 0)
         self._header_layout.setDirection(QBoxLayout.Direction.TopToBottom)
         self._player_header.setDirection(QBoxLayout.Direction.TopToBottom)
         self._player_body.setDirection(QBoxLayout.Direction.TopToBottom)
@@ -241,13 +257,16 @@ class MainWindow(QMainWindow):
 
     def _connect_signals(self) -> None:
         self.text_input.text_changed.connect(lambda _text: self._refresh_actions())
+        self.text_input.open_file_requested.connect(self._choose_document)
         self.engine_selector.engine_changed.connect(self._view_model.select_engine)
         self.synthesize_button.clicked.connect(self._request_synthesis)
         self.cancel_button.clicked.connect(self._view_model.cancel_current_task)
         self._view_model.voices_changed.connect(self._voices_changed)
+        self._view_model.capabilities_changed.connect(self._capabilities_changed)
         self._view_model.state_changed.connect(self._state_changed)
         self._view_model.error_occurred.connect(self._show_error)
         self._view_model.synthesis_completed.connect(self._synthesis_completed)
+        self._view_model.document_imported.connect(self._document_imported)
         self.playback_controls.play_requested.connect(self._play)
         self.playback_controls.pause_requested.connect(self._playback.pause)
         self.playback_controls.stop_requested.connect(self._playback.stop)
@@ -264,27 +283,57 @@ class MainWindow(QMainWindow):
         self.waveform.clear()
         self._view_model.synthesize(
             self.text_input.text(),
-            self.voice_settings.effects(),
-            self.voice_settings.current_voice_id(),
+            self.voice_style.effects(),
+            self.voice_selector.current_voice_id(),
+            self.voice_style.current_style_id(),
         )
 
-    def _voices_changed(self, voices: list) -> None:
-        self.voice_settings.set_voices(voices)
+    def _choose_document(self) -> None:
+        source_path, _selected_filter = QFileDialog.getOpenFileName(
+            self,
+            "Mở tài liệu",
+            "",
+            "Tài liệu hỗ trợ (*.txt *.srt *.docx *.pdf);;Văn bản (*.txt);;"
+            "Phụ đề (*.srt);;Word (*.docx);;PDF (*.pdf)",
+        )
+        if source_path:
+            self._view_model.import_document(source_path)
+
+    def _document_imported(self, document: ImportedDocument) -> None:
+        text = document.text
+        display_name = document.display_name
+        self.text_input.set_text(text)
+        formatted_count = f"{len(text):,}".replace(",", ".")
+        self.status_label.setText(
+            f"●  Đã nhập '{display_name}' ({formatted_count} ký tự)."
+        )
+        self._set_status_style("success")
+        self.text_input.editor.setFocus()
         self._refresh_actions()
+
+    def _voices_changed(self, voices: list) -> None:
+        self.voice_selector.set_voices(voices)
+        self._refresh_actions()
+
+    def _capabilities_changed(self, capabilities: object) -> None:
+        style_ids = tuple(getattr(capabilities, "supported_style_ids", ("tu_nhien",)))
+        self.voice_style.set_supported_styles(style_ids)
 
     def _state_changed(self, state: str) -> None:
         messages = {
             "idle": "Engine đã sẵn sàng.",
             "loading_engine": "Đang tải engine...",
-            "synthesizing": "Đang tổng hợp bằng worker nền...",
-            "completed": "Tổng hợp hoàn tất.",
+            "importing_document": "Đang đọc và trích xuất văn bản từ tệp...",
+            "synthesizing": "Đang tạo giọng nói...",
+            "completed": "Tạo giọng nói hoàn tất.",
             "error": "Không thể hoàn thành tác vụ.",
             "cancelled": "Tác vụ đã được hủy.",
         }
-        self.status_label.setText(messages[state])
+        self.status_label.setText(f"●  {messages[state]}")
         status_style = {
             "idle": "success",
             "loading_engine": "busy",
+            "importing_document": "busy",
             "synthesizing": "busy",
             "completed": "success",
             "error": "error",
@@ -294,20 +343,23 @@ class MainWindow(QMainWindow):
         engine_status = {
             "idle": ("Sẵn sàng", "success"),
             "loading_engine": ("Đang tải", "busy"),
+            "importing_document": ("Đang nhập tệp", "busy"),
             "synthesizing": ("Đang xử lý", "busy"),
             "completed": ("Sẵn sàng", "success"),
             "error": ("Có lỗi", "error"),
             "cancelled": ("Đã dừng", "neutral"),
         }
         self.engine_selector.set_status(*engine_status[state])
-        busy = state in {"loading_engine", "synthesizing"}
+        busy = state in {"loading_engine", "importing_document", "synthesizing"}
         self.cancel_button.setEnabled(busy)
         self.cancel_button.setVisible(busy)
         self.engine_selector.combo.setEnabled(not busy)
+        self.text_input.open_file_button.setEnabled(not busy)
+        self.text_input.editor.setReadOnly(state == "importing_document")
         self._refresh_actions()
 
     def _show_error(self, message: str) -> None:
-        self.status_label.setText(f"Lỗi: {message}")
+        self.status_label.setText(f"●  Lỗi: {message}")
         self._set_status_style("error")
         self._refresh_actions()
 
@@ -319,7 +371,7 @@ class MainWindow(QMainWindow):
             self._show_playback_error(str(exc))
             return
         self.waveform.set_result(result)
-        self.status_label.setText(f"Hoàn tất audio ({duration:.2f} giây). Sẵn sàng phát.")
+        self.status_label.setText(f"●  Hoàn tất · Audio {duration:.2f} giây")
         self._set_status_style("success")
         self._refresh_actions()
 
@@ -337,11 +389,11 @@ class MainWindow(QMainWindow):
             "stopped": "Đã dừng audio.",
         }
         if state in messages:
-            self.status_label.setText(messages[state])
+            self.status_label.setText(f"●  {messages[state]}")
             self._set_status_style("busy" if state == "playing" else "neutral")
 
     def _show_playback_error(self, message: str) -> None:
-        self.status_label.setText(f"Lỗi playback: {message}")
+        self.status_label.setText(f"●  Lỗi playback: {message}")
         self._set_status_style("error")
         self.playback_controls.set_playback_state(self._playback.state)
 
@@ -353,8 +405,9 @@ class MainWindow(QMainWindow):
     def _refresh_actions(self) -> None:
         ready = (
             bool(self.text_input.text().strip())
-            and self.voice_settings.current_voice_id() is not None
-            and self._view_model.state not in {"loading_engine", "synthesizing"}
+            and self.voice_selector.current_voice_id() is not None
+            and self._view_model.state
+            not in {"loading_engine", "importing_document", "synthesizing"}
         )
         self.synthesize_button.setEnabled(ready)
 

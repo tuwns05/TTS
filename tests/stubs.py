@@ -22,6 +22,7 @@ class StubTTSEngine(BaseTTSEngine):
         streaming=False,
         cpu_supported=True,
         gpu_supported=False,
+        supported_style_ids=("tu_nhien", "tin_tuc", "doc_truyen"),
     )
     VOICES = (
         VoiceInfo("female-south", "Nữ miền Nam"),
@@ -60,7 +61,6 @@ class StubTTSEngine(BaseTTSEngine):
         self,
         text: str,
         options: EngineSynthesisOptions,
-        effects=None,
     ) -> SynthesisResult:
         if not self._loaded:
             raise EngineNotLoadedError("Test stub chưa được load.")

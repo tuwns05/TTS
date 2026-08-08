@@ -11,6 +11,12 @@ VIENEU_V3_ENGINE_ID = "vieneu-v3"
 VIENEU_V2_ENGINE_ID = "vieneu-v2"
 KOKORO_VI_ENGINE_ID = "kokoro-vi"
 
+SPEECH_STYLE_NAMES = {
+    "tu_nhien": "Tự nhiên",
+    "tin_tuc": "Tin tức",
+    "doc_truyen": "Kể chuyện",
+}
+
 
 @dataclass(frozen=True)
 class EngineInfo:
@@ -49,10 +55,13 @@ class EngineSynthesisOptions:
 
     voice_id: str
     reference_audio_path: str | None = None
+    style_id: str = "tu_nhien"
 
     def __post_init__(self) -> None:
         if not self.voice_id.strip():
             raise ValidationError("Vui lòng chọn giọng đọc.")
+        if not self.style_id.strip():
+            raise ValidationError("Vui lòng chọn phong cách đọc.")
 
 
 @dataclass(frozen=True)

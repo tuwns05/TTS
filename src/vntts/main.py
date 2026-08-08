@@ -72,7 +72,6 @@ def build_application(argv: Sequence[str] | None = None) -> tuple[QApplication, 
     use_case = SynthesizeSpeech(
         factory,
         registry,
-        max_text_length=settings.tts.max_text_length,
         lifecycle=lifecycle,
     )
     hardware = HardwareDetector().detect()

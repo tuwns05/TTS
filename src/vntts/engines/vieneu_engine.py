@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
+import re
 from collections.abc import Callable
 from pathlib import Path
 from typing import Protocol
@@ -11,7 +12,6 @@ from typing import Protocol
 from vntts.db.models import (
     VIENEU_V2_ENGINE_ID,
     VIENEU_V3_ENGINE_ID,
-    AudioEffects,
     EngineInfo,
     EngineSynthesisOptions,
     SynthesisResult,
@@ -20,7 +20,6 @@ from vntts.db.models import (
 from vntts.engines.base import (
     BaseTTSEngine,
     EngineCapabilities,
-    build_runtime_call_kwargs,
     to_mono_float32,
 )
 from vntts.utils.exceptions import (
@@ -44,6 +43,18 @@ class _VieNeuRuntime(Protocol):
 VieNeuFactory = Callable[..., _VieNeuRuntime]
 VIENEU_V3_REPOSITORY = "pnnbao-ump/VieNeu-TTS-v3-Turbo"
 VIENEU_V3_TOKENIZER_REPOSITORY = "OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano"
+
+
+def _voice_display_name(description: object, voice_id: object) -> str:
+    """Remove preset style metadata now presented by its own UI control."""
+
+    display_name = str(description).strip() or str(voice_id)
+    return re.sub(
+        r"\s*·\s*Phong cách\s+.+$",
+        "",
+        display_name,
+        flags=re.IGNORECASE,
+    ).strip()
 
 
 def _default_vieneu_factory(**kwargs: object) -> _VieNeuRuntime:
@@ -126,7 +137,10 @@ class BaseVieNeuEngine(BaseTTSEngine):
             )
             raw_voices = runtime.list_preset_voices()
             voices = [
-                VoiceInfo(voice_id=str(voice_id), display_name=str(description))
+                VoiceInfo(
+                    voice_id=str(voice_id),
+                    display_name=_voice_display_name(description, voice_id),
+                )
                 for description, voice_id in raw_voices
             ]
         except Exception as exc:
@@ -165,7 +179,6 @@ class BaseVieNeuEngine(BaseTTSEngine):
         self,
         text: str,
         options: EngineSynthesisOptions,
-        effects: AudioEffects | None = None,
     ) -> SynthesisResult:
         runtime = self._runtime
         if runtime is None:
@@ -184,24 +197,13 @@ class BaseVieNeuEngine(BaseTTSEngine):
                 reference_path = Path(options.reference_audio_path).expanduser().resolve()
                 if not reference_path.is_file():
                     raise ValidationError("Không tìm thấy tệp âm thanh tham chiếu.")
-                infer_kwargs = build_runtime_call_kwargs(
-                    runtime=runtime,
-                    method_name="infer",
+                audio = runtime.infer(
                     text=text.strip(),
-                    reference_audio_path=str(reference_path),
-                    effects=effects,
+                    ref_audio=str(reference_path),
                 )
-                audio = runtime.infer(**infer_kwargs)
             else:
                 voice = runtime.get_preset_voice(options.voice_id)
-                infer_kwargs = build_runtime_call_kwargs(
-                    runtime=runtime,
-                    method_name="infer",
-                    text=text.strip(),
-                    voice=voice,
-                    effects=effects,
-                )
-                audio = runtime.infer(**infer_kwargs)
+                audio = runtime.infer(text=text.strip(), voice=voice)
         except ValidationError:
             raise
         except Exception as exc:
@@ -274,6 +276,7 @@ class VieNeuV3Engine(BaseTTSEngine):
         streaming=False,
         cpu_supported=True,
         gpu_supported=True,
+        supported_style_ids=("tu_nhien", "tin_tuc", "doc_truyen"),
     )
 
     def __init__(
@@ -351,7 +354,10 @@ class VieNeuV3Engine(BaseTTSEngine):
             )
             raw_voices = runtime.list_preset_voices()
             voices = [
-                VoiceInfo(voice_id=str(voice_id), display_name=str(description))
+                VoiceInfo(
+                    voice_id=str(voice_id),
+                    display_name=_voice_display_name(description, voice_id),
+                )
                 for description, voice_id in raw_voices
             ]
         except Exception as exc:
@@ -388,7 +394,6 @@ class VieNeuV3Engine(BaseTTSEngine):
         self,
         text: str,
         options: EngineSynthesisOptions,
-        effects: AudioEffects | None = None,
     ) -> SynthesisResult:
         runtime = self._runtime
         if runtime is None:
@@ -403,24 +408,18 @@ class VieNeuV3Engine(BaseTTSEngine):
                 reference_path = Path(options.reference_audio_path).expanduser().resolve()
                 if not reference_path.is_file():
                     raise ValidationError("Không tìm thấy tệp âm thanh tham chiếu.")
-                infer_kwargs = build_runtime_call_kwargs(
-                    runtime=runtime,
-                    method_name="infer",
+                audio = runtime.infer(
                     text=text.strip(),
-                    reference_audio_path=str(reference_path),
-                    effects=effects,
+                    ref_audio=str(reference_path),
+                    style=options.style_id,
                 )
-                audio = runtime.infer(**infer_kwargs)
             else:
                 voice = runtime.get_preset_voice(options.voice_id)
-                infer_kwargs = build_runtime_call_kwargs(
-                    runtime=runtime,
-                    method_name="infer",
+                audio = runtime.infer(
                     text=text.strip(),
                     voice=voice,
-                    effects=effects,
+                    style=options.style_id,
                 )
-                audio = runtime.infer(**infer_kwargs)
         except ValidationError:
             raise
         except Exception as exc:

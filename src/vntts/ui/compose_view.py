@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QObject, QThreadPool, Qt, Signal
+import numpy as np
+from PySide6.QtCore import QObject, QRectF, QSize, QThreadPool, Qt, Signal
+from PySide6.QtGui import QColor, QMouseEvent, QPaintEvent, QPainter, QPen
 from PySide6.QtWidgets import (
     QComboBox,
     QFrame,
@@ -11,12 +13,13 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QSizePolicy,
-    QSlider,
+    QStyle,
     QVBoxLayout,
     QWidget,
 )
 
 from vntts.config.settings import Settings
+from vntts.config.theme import Color
 from vntts.db.models import (
     AudioEffects,
     EngineInfo,
@@ -28,6 +31,7 @@ from vntts.db.models import (
 )
 from vntts.engines.base import EngineCapabilities
 from vntts.engines.factory import EngineRegistry
+from vntts.services.document_import import DocumentTextImporter, ImportedDocument
 from vntts.services.synthesis import SynthesizeSpeech
 from vntts.utils.exceptions import AppError, ValidationError
 from vntts.utils.worker import TaskWorker
@@ -40,11 +44,13 @@ class MainViewModel(QObject):
     voices_changed = Signal(object)
     capabilities_changed = Signal(object)
     synthesis_completed = Signal(object)
+    document_imported = Signal(object)
     error_occurred = Signal(str)
 
     VALID_STATES = {
         "idle",
         "loading_engine",
+        "importing_document",
         "synthesizing",
         "completed",
         "error",
@@ -58,6 +64,7 @@ class MainViewModel(QObject):
         settings: Settings,
         recommendation: EngineRecommendation | None = None,
         thread_pool: QThreadPool | None = None,
+        document_importer: DocumentTextImporter | None = None,
     ) -> None:
         super().__init__()
         self._registry = registry
@@ -65,12 +72,14 @@ class MainViewModel(QObject):
         self._settings = settings
         self._recommendation = recommendation
         self._thread_pool = thread_pool or QThreadPool.globalInstance()
+        self._document_importer = document_importer or DocumentTextImporter()
         self._active_workers: set[TaskWorker] = set()
         self._current_worker: TaskWorker | None = None
         self._state = "idle"
         self._selected_engine_id: str | None = None
         self._voices: list[VoiceInfo] = []
         self._selected_capabilities: EngineCapabilities | None = None
+        self._state_before_document_import = "idle"
 
     @property
     def state(self) -> str:
@@ -139,7 +148,13 @@ class MainViewModel(QObject):
         worker.signals.cancelled.connect(lambda: self._set_state("cancelled"))
         self._start_worker(worker)
 
-    def synthesize(self, text: str, effects: AudioEffects, voice_id: str | None) -> None:
+    def synthesize(
+        self,
+        text: str,
+        effects: AudioEffects,
+        voice_id: str | None,
+        style_id: str = "tu_nhien",
+    ) -> None:
         """Build a request and execute synthesis outside the UI thread."""
 
         try:
@@ -150,7 +165,7 @@ class MainViewModel(QObject):
             request = SynthesisRequest(
                 text=text,
                 engine_id=self._selected_engine_id,
-                options=EngineSynthesisOptions(voice_id=voice_id),
+                options=EngineSynthesisOptions(voice_id=voice_id, style_id=style_id),
                 effects=effects,
             )
         except AppError as exc:
@@ -160,6 +175,20 @@ class MainViewModel(QObject):
         self._set_state("synthesizing")
         worker = TaskWorker(self._synthesize_speech.execute, request)
         worker.signals.result.connect(self._synthesis_ready)
+        worker.signals.error.connect(self._fail)
+        worker.signals.cancelled.connect(lambda: self._set_state("cancelled"))
+        self._start_worker(worker)
+
+    def import_document(self, source_path: str) -> None:
+        """Extract a supported document outside the UI thread."""
+
+        if self._state in {"loading_engine", "importing_document", "synthesizing"}:
+            self.error_occurred.emit("Vui lòng chờ tác vụ hiện tại hoàn thành trước khi mở tệp.")
+            return
+        self._state_before_document_import = self._state
+        self._set_state("importing_document")
+        worker = TaskWorker(self._document_importer.import_file, source_path)
+        worker.signals.result.connect(self._document_ready)
         worker.signals.error.connect(self._fail)
         worker.signals.cancelled.connect(lambda: self._set_state("cancelled"))
         self._start_worker(worker)
@@ -199,6 +228,10 @@ class MainViewModel(QObject):
     def _synthesis_ready(self, result: SynthesisResult) -> None:
         self._set_state("completed")
         self.synthesis_completed.emit(result)
+
+    def _document_ready(self, document: ImportedDocument) -> None:
+        self._set_state(self._state_before_document_import)
+        self.document_imported.emit(document)
 
     def _fail(self, message: str) -> None:
         self._set_state("error")
@@ -296,7 +329,7 @@ class EngineSelector(QWidget):
 
 
 class PlaybackControls(QWidget):
-    """Expose Play/Pause/Stop commands and reflect playback state."""
+    """Expose a compact play/pause toggle and a secondary stop command."""
 
     play_requested = Signal()
     pause_requested = Signal()
@@ -306,38 +339,163 @@ class PlaybackControls(QWidget):
         super().__init__(parent)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
-        self.play_button = QPushButton("▶", self)
+        layout.setSpacing(12)
+        self.play_button = QPushButton(self)
         self.play_button.setObjectName("playButton")
-        self.pause_button = QPushButton("Ⅱ", self)
-        self.pause_button.setObjectName("pauseButton")
-        self.stop_button = QPushButton("■", self)
+        self.stop_button = QPushButton(self)
         self.stop_button.setObjectName("stopButton")
-        for button in (self.play_button, self.pause_button, self.stop_button):
-            layout.addWidget(button)
-        layout.addStretch()
+        layout.addWidget(self.play_button)
+        layout.addWidget(self.stop_button)
         self.play_button.setAccessibleName("Phát audio")
-        self.pause_button.setAccessibleName("Tạm dừng audio")
         self.stop_button.setAccessibleName("Dừng audio")
+        self.play_button.setIconSize(QSize(20, 20))
+        self.stop_button.setIconSize(QSize(15, 15))
+        self.stop_button.setIcon(
+            self.style().standardIcon(QStyle.StandardPixmap.SP_MediaStop)
+        )
         self.play_button.setToolTip("Phát")
-        self.pause_button.setToolTip("Tạm dừng")
         self.stop_button.setToolTip("Dừng")
-        self.play_button.clicked.connect(self.play_requested)
-        self.pause_button.clicked.connect(self.pause_requested)
+        self._state = "empty"
+        self.play_button.clicked.connect(self._toggle_play_pause)
         self.stop_button.clicked.connect(self.stop_requested)
         self.set_playback_state("empty")
 
     def set_playback_state(self, state: str) -> None:
         """Enable only commands valid for the current playback state."""
 
+        self._state = state
         has_audio = state != "empty"
-        self.play_button.setEnabled(has_audio and state != "playing")
-        self.pause_button.setEnabled(state == "playing")
+        is_playing = state == "playing"
+        media_icon = (
+            QStyle.StandardPixmap.SP_MediaPause
+            if is_playing
+            else QStyle.StandardPixmap.SP_MediaPlay
+        )
+        self.play_button.setIcon(self.style().standardIcon(media_icon))
+        self.play_button.setAccessibleName("Tạm dừng audio" if is_playing else "Phát audio")
+        self.play_button.setToolTip("Tạm dừng" if is_playing else "Phát")
+        self.play_button.setProperty("playing", is_playing)
+        self.play_button.style().unpolish(self.play_button)
+        self.play_button.style().polish(self.play_button)
+        self.play_button.setEnabled(has_audio)
         self.stop_button.setEnabled(state in {"playing", "paused"})
+
+    def _toggle_play_pause(self) -> None:
+        if self._state == "playing":
+            self.pause_requested.emit()
+        else:
+            self.play_requested.emit()
+
+
+class WaveformCanvas(QWidget):
+    """Paint an amplitude waveform and translate pointer movement into seeking."""
+
+    seek_requested = Signal(int)
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("waveformCanvas")
+        self.setAccessibleName("Dải sóng âm thanh")
+        self.setMinimumHeight(54)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self._envelope = np.zeros(96, dtype=np.float32)
+        self._duration_ms = 0
+        self._position_ms = 0
+        self._has_audio = False
+
+    def sizeHint(self) -> QSize:
+        return QSize(420, 54)
+
+    def set_audio(self, result: SynthesisResult, duration_ms: int) -> None:
+        audio = np.abs(np.asarray(result.audio, dtype=np.float32))
+        chunks = np.array_split(audio, min(192, max(1, audio.size)))
+        peaks = np.array([float(chunk.max(initial=0.0)) for chunk in chunks])
+        reference = float(np.percentile(peaks, 95)) if peaks.size else 0.0
+        if reference > 0:
+            peaks = np.clip(peaks / reference, 0.0, 1.0)
+        self._envelope = peaks.astype(np.float32)
+        self._duration_ms = max(0, int(duration_ms))
+        self._position_ms = 0
+        self._has_audio = self._duration_ms > 0
+        self.setCursor(
+            Qt.CursorShape.PointingHandCursor
+            if self._has_audio
+            else Qt.CursorShape.ArrowCursor
+        )
+        self.update()
+
+    def clear(self) -> None:
+        self._envelope = np.zeros(96, dtype=np.float32)
+        self._duration_ms = 0
+        self._position_ms = 0
+        self._has_audio = False
+        self.setCursor(Qt.CursorShape.ArrowCursor)
+        self.update()
+
+    def set_position(self, position_ms: int) -> None:
+        self._position_ms = max(0, min(int(position_ms), self._duration_ms))
+        self.update()
+
+    def paintEvent(self, event: QPaintEvent) -> None:
+        super().paintEvent(event)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        bounds = self.rect().adjusted(3, 5, -3, -5)
+        if bounds.width() <= 0 or bounds.height() <= 0:
+            return
+
+        bar_step = 5
+        bar_width = 2.25
+        count = max(1, bounds.width() // bar_step)
+        source_indices = np.linspace(0, self._envelope.size - 1, count).astype(int)
+        values = self._envelope[source_indices]
+        progress = (
+            self._position_ms / self._duration_ms
+            if self._has_audio and self._duration_ms
+            else 0.0
+        )
+        center_y = bounds.center().y()
+        maximum_height = max(10.0, bounds.height() * 0.82)
+
+        painter.setPen(Qt.PenStyle.NoPen)
+        for index, amplitude in enumerate(values):
+            fraction = index / max(1, count - 1)
+            height = 8.0 + float(amplitude) * (maximum_height - 8.0)
+            x = bounds.left() + index * bar_step
+            color = Color.AMBER if self._has_audio and fraction <= progress else Color.BORDER
+            painter.setBrush(QColor(color))
+            painter.drawRoundedRect(
+                QRectF(x, center_y - height / 2, bar_width, height),
+                1.2,
+                1.2,
+            )
+
+        if self._has_audio:
+            playhead_x = bounds.left() + progress * bounds.width()
+            painter.setPen(QPen(QColor(Color.AMBER), 2.0))
+            painter.drawLine(int(playhead_x), bounds.top(), int(playhead_x), bounds.bottom())
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._seek_from_x(event.position().x())
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:
+        if event.buttons() & Qt.MouseButton.LeftButton:
+            self._seek_from_x(event.position().x())
+        super().mouseMoveEvent(event)
+
+    def _seek_from_x(self, x_position: float) -> None:
+        if not self._has_audio or self.width() <= 0:
+            return
+        fraction = max(0.0, min(1.0, x_position / self.width()))
+        position = round(fraction * self._duration_ms)
+        self.set_position(position)
+        self.seek_requested.emit(position)
 
 
 class WaveformPreview(QWidget):
-    """Interactive single-track scrubber retained under the legacy class name."""
+    """Combine elapsed time, a real waveform and total clip duration."""
 
     seek_requested = Signal(int)
 
@@ -348,22 +506,18 @@ class WaveformPreview(QWidget):
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self._has_audio = False
         self._duration_ms = 0
-        self.slider = QSlider(Qt.Orientation.Horizontal, self)
-        self.slider.setObjectName("playbackScrubber")
-        self.slider.setAccessibleName("Vị trí phát audio")
-        self.slider.setRange(0, 0)
-        self.slider.setEnabled(False)
-        self.slider.sliderMoved.connect(self.seek_requested)
+        self.canvas = WaveformCanvas(self)
+        self.canvas.seek_requested.connect(self.seek_requested)
         self.elapsed_label = QLabel("00:00", self)
-        self.elapsed_label.setObjectName("timeLabel")
+        self.elapsed_label.setObjectName("elapsedTime")
         self.duration_label = QLabel("00:00", self)
-        self.duration_label.setObjectName("timeLabel")
+        self.duration_label.setObjectName("durationTime")
 
         timeline = QHBoxLayout()
         timeline.setContentsMargins(0, 0, 0, 0)
-        timeline.setSpacing(10)
+        timeline.setSpacing(14)
         timeline.addWidget(self.elapsed_label)
-        timeline.addWidget(self.slider, 1)
+        timeline.addWidget(self.canvas, 1)
         timeline.addWidget(self.duration_label)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -381,9 +535,7 @@ class WaveformPreview(QWidget):
         duration_ms = round(result.audio.size / result.sample_rate * 1_000)
         self._has_audio = duration_ms > 0
         self._duration_ms = max(0, duration_ms)
-        self.slider.setRange(0, self._duration_ms)
-        self.slider.setValue(0)
-        self.slider.setEnabled(self._has_audio)
+        self.canvas.set_audio(result, self._duration_ms)
         self.elapsed_label.setText("00:00")
         self.duration_label.setText(self._format_time(self._duration_ms))
 
@@ -392,9 +544,7 @@ class WaveformPreview(QWidget):
 
         self._has_audio = False
         self._duration_ms = 0
-        self.slider.setRange(0, 0)
-        self.slider.setValue(0)
-        self.slider.setEnabled(False)
+        self.canvas.clear()
         self.elapsed_label.setText("00:00")
         self.duration_label.setText("00:00")
 
@@ -402,8 +552,7 @@ class WaveformPreview(QWidget):
         """Update playback progress without fighting an active drag gesture."""
 
         position = max(0, min(int(position_ms), self._duration_ms))
-        if not self.slider.isSliderDown():
-            self.slider.setValue(position)
+        self.canvas.set_position(position)
         self.elapsed_label.setText(self._format_time(position))
 
     @staticmethod
@@ -417,26 +566,31 @@ class TextInputWidget(QWidget):
     """Collect Vietnamese text and display its current length."""
 
     text_changed = Signal(str)
+    open_file_requested = Signal()
 
-    def __init__(self, max_length: int, parent: QWidget | None = None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("textInputPanel")
-        self._max_length = max_length
         self.editor = QPlainTextEdit(self)
         self.editor.setObjectName("textInput")
-        self.editor.setPlaceholderText("Nhập văn bản tiếng Việt cần tổng hợp...")
-        self.editor.setAccessibleName("Nội dung tiếng Việt")
+        self.editor.setPlaceholderText("Nhập văn bản cần tạo giọng nói...")
+        self.editor.setAccessibleName("Nội dung")
         self.editor.setMinimumHeight(280)
         self.character_count = QLabel(self)
         self.character_count.setObjectName("characterCount")
+        self.open_file_button = QPushButton("Mở tệp", self)
+        self.open_file_button.setObjectName("openFileButton")
+        self.open_file_button.setAccessibleName("Mở tệp văn bản")
+        self.open_file_button.setToolTip("Nhập nội dung từ TXT, SRT, DOCX hoặc PDF")
 
-        title = QLabel("Nội dung tiếng Việt", self)
+        title = QLabel("Nội dung", self)
         title.setObjectName("sectionTitle")
         helper = QLabel("Nhập hoặc dán nội dung cần chuyển thành giọng nói.", self)
         helper.setObjectName("helperText")
         header = QHBoxLayout()
         header.addWidget(title)
         header.addStretch()
+        header.addWidget(self.open_file_button)
         header.addWidget(self.character_count)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -444,6 +598,7 @@ class TextInputWidget(QWidget):
         layout.addLayout(header)
         layout.addWidget(helper)
         layout.addWidget(self.editor)
+        self.open_file_button.clicked.connect(self.open_file_requested)
         self.editor.textChanged.connect(self._on_text_changed)
         self._on_text_changed()
 
@@ -452,7 +607,13 @@ class TextInputWidget(QWidget):
 
         return self.editor.toPlainText()
 
+    def set_text(self, text: str) -> None:
+        """Replace editor contents with imported plain text."""
+
+        self.editor.setPlainText(text)
+
     def _on_text_changed(self) -> None:
         value = self.text()
-        self.character_count.setText(f"{len(value)} / {self._max_length} ký tự")
+        formatted_count = f"{len(value):,}".replace(",", ".")
+        self.character_count.setText(f"{formatted_count} ký tự")
         self.text_changed.emit(value)

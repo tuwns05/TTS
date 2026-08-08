@@ -126,6 +126,16 @@ def build_stylesheet() -> str:
         font-size: 17px;
         font-weight: 600;
     }}
+    QLabel#playerTitle {{
+        color: {Color.BONE};
+        font-family: "{display_font}";
+        font-size: 24px;
+        font-weight: 600;
+    }}
+    QLabel#playerHint {{
+        color: {Color.SLATE_DIM};
+        font-size: 12px;
+    }}
     QLabel#fieldLabel {{
         color: {Color.BONE_DIM};
         font-size: 12px;
@@ -133,12 +143,14 @@ def build_stylesheet() -> str:
     }}
     QLabel#characterCount,
     QLabel#metricValue,
-    QLabel#timeLabel {{
+    QLabel#elapsedTime,
+    QLabel#durationTime {{
         color: {Color.SLATE};
         font-family: "{mono_font}";
-        font-size: 11px;
+        font-size: 12px;
         font-weight: 500;
     }}
+    QLabel#elapsedTime {{ color: {Color.BONE_DIM}; }}
     QLabel#engineBadge {{
         color: {Color.BONE};
         background-color: {Color.PANEL_RAISED};
@@ -158,12 +170,18 @@ def build_stylesheet() -> str:
     QFrame#playerCard,
     QWidget#enginePanel,
     QWidget#settingsContainer,
-    QGroupBox#voiceSettingsCard {{
+    QGroupBox#voiceSelectorCard,
+    QGroupBox#voiceStyleCard {{
         background-color: {Color.PANEL};
         border: 1px solid {Color.BORDER_SOFT};
         border-radius: {Radius.LG}px;
     }}
-    QGroupBox#voiceSettingsCard {{
+    QFrame#playerCard {{
+        background-color: {Color.INK_SOFT};
+        border-color: {Color.BORDER};
+    }}
+    QGroupBox#voiceSelectorCard,
+    QGroupBox#voiceStyleCard {{
         margin-top: 16px;
         padding-top: 8px;
         color: {Color.BONE};
@@ -171,7 +189,8 @@ def build_stylesheet() -> str:
         font-size: 17px;
         font-weight: 600;
     }}
-    QGroupBox#voiceSettingsCard::title {{
+    QGroupBox#voiceSelectorCard::title,
+    QGroupBox#voiceStyleCard::title {{
         subcontrol-origin: margin;
         subcontrol-position: top left;
         left: 16px;
@@ -276,41 +295,76 @@ def build_stylesheet() -> str:
         border-color: {Color.DANGER};
     }}
 
+    QPushButton#openFileButton {{
+        min-height: 32px;
+        max-height: 32px;
+        padding: 0 12px;
+        color: {Color.TEAL};
+        background-color: {Color.TEAL_SOFT};
+        border-color: {Color.TEAL};
+        border-radius: 8px;
+    }}
+    QPushButton#openFileButton:hover {{
+        color: {Color.INK};
+        background-color: {Color.TEAL};
+        border-color: {Color.TEAL};
+    }}
+
     QPushButton#playButton,
-    QPushButton#pauseButton,
     QPushButton#stopButton {{
-        min-width: 42px;
-        max-width: 42px;
-        min-height: 42px;
-        max-height: 42px;
         padding: 0;
-        border-radius: 21px;
         font-size: 15px;
     }}
     QPushButton#playButton {{
-        min-width: 50px;
-        max-width: 50px;
-        min-height: 50px;
-        max-height: 50px;
-        border-radius: 25px;
+        min-width: 58px;
+        max-width: 58px;
+        min-height: 58px;
+        max-height: 58px;
+        border-radius: 29px;
         color: {Color.INK};
         background-color: {Color.AMBER};
         border-color: {Color.AMBER};
+        font-size: 18px;
     }}
-    QPushButton#playButton:hover {{ background-color: {Color.AMBER_HOVER}; }}
-    QPushButton#playButton:disabled,
-    QPushButton#pauseButton:disabled,
+    QPushButton#playButton:hover {{
+        background-color: {Color.AMBER_HOVER};
+        border-color: {Color.AMBER_HOVER};
+    }}
+    QPushButton#playButton[playing="true"] {{
+        background-color: {Color.AMBER_HOVER};
+        border-color: {Color.AMBER_HOVER};
+    }}
+    QPushButton#stopButton {{
+        min-width: 46px;
+        max-width: 46px;
+        min-height: 46px;
+        max-height: 46px;
+        border-radius: 23px;
+        color: {Color.SLATE};
+        background-color: {Color.PANEL};
+        border-color: {Color.BORDER_SOFT};
+    }}
+    QPushButton#stopButton:hover {{
+        color: {Color.BONE};
+        background-color: {Color.PANEL_RAISED};
+        border-color: {Color.BORDER};
+    }}
+    QPushButton#playButton:disabled {{
+        color: {Color.SLATE_DIM};
+        background-color: {Color.PANEL};
+        border-color: {Color.BORDER_SOFT};
+    }}
     QPushButton#stopButton:disabled {{
         color: {Color.SLATE_DIM};
-        background-color: {Color.INK_SOFT};
+        background-color: {Color.PANEL};
         border-color: {Color.BORDER_SOFT};
     }}
 
     QLabel#engineStatus,
     QLabel#statusLabel {{
-        border-radius: {Radius.SM}px;
-        padding: 7px 10px;
-        font-size: 11px;
+        border-radius: 15px;
+        padding: 7px 13px;
+        font-size: 12px;
         font-weight: 600;
     }}
     QLabel#engineStatus[state="neutral"],
@@ -370,6 +424,10 @@ def build_stylesheet() -> str:
     QSlider::sub-page:horizontal:disabled {{ background: {Color.SLATE_DIM}; }}
 
     QWidget#audioTimeline {{
+        background-color: transparent;
+        border: none;
+    }}
+    QWidget#waveformCanvas {{
         background-color: transparent;
         border: none;
     }}
