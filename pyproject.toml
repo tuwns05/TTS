@@ -37,6 +37,8 @@ where = ["src"]
 vntts = [
     "config/*.yaml",
     "ui/resources/*.qss",
+    "ui/resources/fonts/*.ttf",
+    "ui/resources/fonts/*.otf",
 ]
 
 [tool.pytest.ini_options]

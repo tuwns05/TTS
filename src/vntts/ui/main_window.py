@@ -1,6 +1,4 @@
-"""Minimal runnable desktop window for the current TTS workflow."""
-
-from pathlib import Path
+"""Desktop workspace for the Vietnamese text-to-speech workflow."""
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QCloseEvent, QResizeEvent
@@ -17,6 +15,7 @@ from PySide6.QtWidgets import (
 )
 
 from vntts.config.settings import Settings
+from vntts.config.theme import build_stylesheet
 from vntts.db.models import SynthesisResult
 from vntts.services.playback import PlaybackService
 from vntts.utils.exceptions import PlaybackError
@@ -43,7 +42,7 @@ class MainWindow(QMainWindow):
         self._view_model = view_model
         self._settings = settings
         self._playback = playback or PlaybackService(self)
-        self.setObjectName("mainWindow")
+        self.setObjectName("AppRoot")
         self.setWindowTitle(settings.application.name)
         self.resize(1080, 760)
         self.setMinimumSize(640, 560)
@@ -59,12 +58,13 @@ class MainWindow(QMainWindow):
         self.synthesize_button.setAccessibleName("Tạo giọng nói")
         self.synthesize_button.setMinimumSize(176, 48)
         self.synthesize_button.setEnabled(False)
-        self.cancel_button = QPushButton("Hủy", self)
+        self.cancel_button = QPushButton("Dừng tác vụ", self)
         self.cancel_button.setObjectName("cancelButton")
-        self.cancel_button.setAccessibleName("Hủy tác vụ hiện tại")
+        self.cancel_button.setAccessibleName("Dừng tác vụ hiện tại")
         self.cancel_button.setMinimumHeight(48)
         self.cancel_button.setEnabled(False)
-        self.status_label = QLabel("Sẵn sàng", self)
+        self.cancel_button.hide()
+        self.status_label = QLabel("Chưa có audio", self)
         self.status_label.setObjectName("statusLabel")
         self.status_label.setProperty("state", "neutral")
         self.status_label.setWordWrap(True)
@@ -79,8 +79,8 @@ class MainWindow(QMainWindow):
         self._composer_card = QFrame(self)
         self._composer_card.setObjectName("composerCard")
         self._composer_layout = QVBoxLayout(self._composer_card)
-        self._composer_layout.setContentsMargins(24, 24, 24, 24)
-        self._composer_layout.setSpacing(16)
+        self._composer_layout.setContentsMargins(24, 22, 24, 24)
+        self._composer_layout.setSpacing(18)
         self._composer_layout.addWidget(self.text_input)
         self._composer_layout.addLayout(actions)
 
@@ -100,21 +100,25 @@ class MainWindow(QMainWindow):
         self._workspace_layout.addWidget(self._composer_card, 2)
         self._workspace_layout.addWidget(self._settings_container, 1)
 
-        app_title = QLabel("Vietnamese TTS Studio", self)
+        eyebrow = QLabel("OFFLINE  ·  TIẾNG VIỆT", self)
+        eyebrow.setObjectName("eyebrow")
+        app_title = QLabel("GPHI TTS Studio", self)
         app_title.setObjectName("appTitle")
         app_subtitle = QLabel(
-            "Chuyển văn bản tiếng Việt thành giọng nói ngay trên thiết bị.",
+            "Chuyển văn bản tiếng Việt thành giọng nói ngay trên thiết bị với một trải nghiệm rõ ràng hơn.",
             self,
         )
         app_subtitle.setObjectName("appSubtitle")
-        title_column = QVBoxLayout()
-        title_column.setContentsMargins(0, 0, 0, 0)
-        title_column.setSpacing(0)
-        title_column.addWidget(app_title)
-        title_column.addWidget(app_subtitle)
-        self._engine_badge = QLabel("VieNeu v3 · Local", self)
+        self._engine_badge = QLabel("Offline · v3", self)
         self._engine_badge.setObjectName("engineBadge")
         self._engine_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._engine_badge.setProperty("state", "success")
+        title_column = QVBoxLayout()
+        title_column.setContentsMargins(0, 0, 0, 0)
+        title_column.setSpacing(3)
+        title_column.addWidget(eyebrow)
+        title_column.addWidget(app_title)
+        title_column.addWidget(app_subtitle)
         self._header_layout = QBoxLayout(QBoxLayout.Direction.LeftToRight)
         self._header_layout.setContentsMargins(0, 0, 0, 0)
         self._header_layout.addLayout(title_column)
@@ -123,7 +127,7 @@ class MainWindow(QMainWindow):
 
         self._player_card = QFrame(self)
         self._player_card.setObjectName("playerCard")
-        player_title = QLabel("Bản xem trước", self)
+        player_title = QLabel("Bản nghe thử", self)
         player_title.setObjectName("sectionTitle")
         self._player_header = QBoxLayout(QBoxLayout.Direction.LeftToRight)
         self._player_header.setContentsMargins(0, 0, 0, 0)
@@ -131,16 +135,26 @@ class MainWindow(QMainWindow):
         self._player_header.addStretch()
         self._player_header.addWidget(self.status_label)
         self._player_layout = QVBoxLayout(self._player_card)
-        self._player_layout.setContentsMargins(24, 16, 24, 16)
-        self._player_layout.setSpacing(8)
+        self._player_layout.setContentsMargins(22, 18, 22, 18)
+        self._player_layout.setSpacing(12)
         self._player_layout.addLayout(self._player_header)
-        self._player_layout.addWidget(self.waveform)
-        self._player_layout.addWidget(self.playback_controls)
+        self._player_body = QBoxLayout(QBoxLayout.Direction.LeftToRight)
+        self._player_body.setContentsMargins(0, 0, 0, 0)
+        self._player_body.setSpacing(16)
+        self._player_body.addWidget(self.playback_controls)
+        self._player_body.addWidget(self.waveform, 1)
+        self._player_layout.addLayout(self._player_body)
+
+        self._header_divider = QFrame(self)
+        self._header_divider.setObjectName("sectionDivider")
+        self._header_divider.setFrameShape(QFrame.Shape.HLine)
+        self._header_divider.setFrameShadow(QFrame.Shadow.Plain)
 
         self._root_layout = QVBoxLayout()
-        self._root_layout.setContentsMargins(24, 24, 24, 24)
-        self._root_layout.setSpacing(16)
+        self._root_layout.setContentsMargins(28, 26, 28, 24)
+        self._root_layout.setSpacing(18)
         self._root_layout.addLayout(self._header_layout)
+        self._root_layout.addWidget(self._header_divider)
         self._root_layout.addLayout(self._workspace_layout, 1)
         self._root_layout.addWidget(self._player_card)
         self._content = QWidget(self)
@@ -187,16 +201,15 @@ class MainWindow(QMainWindow):
             self._player_header.setDirection(QBoxLayout.Direction.LeftToRight)
             self._root_layout.setContentsMargins(24, 24, 24, 24)
             self._composer_layout.setContentsMargins(24, 24, 24, 24)
+            self._header_layout.setSpacing(16)
+            self._player_body.setDirection(QBoxLayout.Direction.LeftToRight)
             self._workspace_layout.setStretch(0, 2)
             self._workspace_layout.setStretch(1, 1)
             self._settings_layout.setStretch(0, 0)
             self._settings_layout.setStretch(1, 0)
             self.text_input.editor.setMinimumHeight(280)
-            self.waveform.setMinimumHeight(88)
+            self.waveform.setMinimumHeight(52)
             self.status_label.setMaximumWidth(480)
-            self._header_layout.setAlignment(
-                self._engine_badge, Qt.AlignmentFlag.AlignRight
-            )
             return
 
         self._workspace_layout.setDirection(QBoxLayout.Direction.TopToBottom)
@@ -204,8 +217,9 @@ class MainWindow(QMainWindow):
         self._workspace_layout.setStretch(1, 0)
         self._root_layout.setContentsMargins(16, 16, 16, 16)
         self._composer_layout.setContentsMargins(16, 16, 16, 16)
+        self._header_layout.setSpacing(12)
         self.text_input.editor.setMinimumHeight(220 if mode == "compact" else 200)
-        self.waveform.setMinimumHeight(80 if mode == "compact" else 72)
+        self.waveform.setMinimumHeight(52)
 
         if mode == "compact":
             self._settings_layout.setDirection(QBoxLayout.Direction.LeftToRight)
@@ -213,10 +227,8 @@ class MainWindow(QMainWindow):
             self._settings_layout.setStretch(1, 1)
             self._header_layout.setDirection(QBoxLayout.Direction.LeftToRight)
             self._player_header.setDirection(QBoxLayout.Direction.LeftToRight)
+            self._player_body.setDirection(QBoxLayout.Direction.LeftToRight)
             self.status_label.setMaximumWidth(400)
-            self._header_layout.setAlignment(
-                self._engine_badge, Qt.AlignmentFlag.AlignRight
-            )
             return
 
         self._settings_layout.setDirection(QBoxLayout.Direction.TopToBottom)
@@ -224,10 +236,8 @@ class MainWindow(QMainWindow):
         self._settings_layout.setStretch(1, 0)
         self._header_layout.setDirection(QBoxLayout.Direction.TopToBottom)
         self._player_header.setDirection(QBoxLayout.Direction.TopToBottom)
+        self._player_body.setDirection(QBoxLayout.Direction.TopToBottom)
         self.status_label.setMaximumWidth(16_777_215)
-        self._header_layout.setAlignment(
-            self._engine_badge, Qt.AlignmentFlag.AlignLeft
-        )
 
     def _connect_signals(self) -> None:
         self.text_input.text_changed.connect(lambda _text: self._refresh_actions())
@@ -241,15 +251,13 @@ class MainWindow(QMainWindow):
         self.playback_controls.play_requested.connect(self._play)
         self.playback_controls.pause_requested.connect(self._playback.pause)
         self.playback_controls.stop_requested.connect(self._playback.stop)
+        self.waveform.seek_requested.connect(self._playback.seek)
         self._playback.state_changed.connect(self._playback_state_changed)
+        self._playback.position_changed.connect(self.waveform.set_position)
         self._playback.error_occurred.connect(self._show_playback_error)
 
     def _load_style(self) -> None:
-        style_path = Path(__file__).parent / "resources" / "styles.qss"
-        try:
-            self.setStyleSheet(style_path.read_text(encoding="utf-8"))
-        except OSError:
-            self.setStyleSheet("")
+        self.setStyleSheet(build_stylesheet())
 
     def _request_synthesis(self) -> None:
         self._playback.clear()
@@ -283,8 +291,18 @@ class MainWindow(QMainWindow):
             "cancelled": "warning",
         }
         self._set_status_style(status_style[state])
+        engine_status = {
+            "idle": ("Sẵn sàng", "success"),
+            "loading_engine": ("Đang tải", "busy"),
+            "synthesizing": ("Đang xử lý", "busy"),
+            "completed": ("Sẵn sàng", "success"),
+            "error": ("Có lỗi", "error"),
+            "cancelled": ("Đã dừng", "neutral"),
+        }
+        self.engine_selector.set_status(*engine_status[state])
         busy = state in {"loading_engine", "synthesizing"}
         self.cancel_button.setEnabled(busy)
+        self.cancel_button.setVisible(busy)
         self.engine_selector.combo.setEnabled(not busy)
         self._refresh_actions()
 

@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from vntts.db.models import EngineSynthesisOptions
+from vntts.db.models import AudioEffects, EngineSynthesisOptions
 from vntts.engines.kokoro_engine import KokoroVIEngine
 from vntts.utils.exceptions import EngineLoadError, ValidationError
 
@@ -62,6 +62,45 @@ def test_kokoro_passes_complete_local_paths_and_runs_on_cpu(
     assert calls[-1]["voice"] == "mai_linh"
     assert result.audio.dtype == np.float32
     assert result.sample_rate == 24_000
+
+
+def test_kokoro_forwards_audio_effects_to_runtime(tmp_path: Path) -> None:
+    model = tmp_path / "kokoro_vi.pth"
+    config = tmp_path / "config.json"
+    voices = tmp_path / "voicepacks"
+    model.write_bytes(b"model")
+    config.write_text("{}", encoding="utf-8")
+    voices.mkdir()
+    (voices / "diem_trinh.pt").write_bytes(b"voice")
+
+    calls: list[dict[str, object]] = []
+
+    class _Runtime:
+        def __init__(self) -> None:
+            self.closed = False
+
+        def synthesize(self, text: str, **kwargs: object) -> tuple[np.ndarray, str]:
+            calls.append({"text": text, **kwargs})
+            return np.ones(len(text), dtype=np.float64), "phonemes"
+
+        def close(self) -> None:
+            self.closed = True
+
+    engine = KokoroVIEngine(
+        model,
+        config,
+        voices,
+        sdk_factory=lambda **_: _Runtime(),
+    )
+    engine.load("cpu")
+
+    effects = AudioEffects(speed=1.5, pitch_semitones=3.0, volume_db=-2.0)
+    engine.synthesize("Xin chào", EngineSynthesisOptions("diem_trinh"), effects)
+
+    assert calls[-1]["text"] == "Xin chào"
+    assert calls[-1]["speed"] == 1.5
+    assert calls[-1]["pitch"] == 3.0
+    assert calls[-1]["volume"] == -2.0
 
 
 def test_kokoro_requires_local_voicepack(tmp_path: Path) -> None:

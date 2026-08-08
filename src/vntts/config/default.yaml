@@ -1,5 +1,5 @@
 application:
-  name: "Vietnamese TTS Desktop"
+  name: "GPHI-TTS"
   environment: "development"
 
 paths:

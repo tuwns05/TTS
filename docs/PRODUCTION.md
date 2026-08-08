@@ -43,7 +43,7 @@ $env:VNTTS_LOG_LEVEL = "INFO"
 
 - Không hard-code đường dẫn máy build.
 - Dữ liệu ghi được nằm trong `%LOCALAPPDATA%\VietnameseTTSDesktop`.
-- V3 bundled nằm trong vùng read-only của installer; v2/Kokoro nằm trong app-data.
+- V3 bundled nằm trong vùng read-only của installer; v2/Kokoro nằm trong app-data dưới cùng một model root và được lưu theo thư mục con riêng của engine (`vieneu-v2/`, `kokoro-vi/`). Khi tải model mới, phải đặt vào thư mục con đó trong root hiện có.
 - Chọn `vieneu-v3` mặc định và load local bằng worker.
 - Không bật console log, `diagnose` hoặc traceback chứa dữ liệu nhạy cảm.
 - Không bundle model cache, log, text, audio hoặc mẫu giọng của developer.

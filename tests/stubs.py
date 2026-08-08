@@ -60,6 +60,7 @@ class StubTTSEngine(BaseTTSEngine):
         self,
         text: str,
         options: EngineSynthesisOptions,
+        effects=None,
     ) -> SynthesisResult:
         if not self._loaded:
             raise EngineNotLoadedError("Test stub chưa được load.")

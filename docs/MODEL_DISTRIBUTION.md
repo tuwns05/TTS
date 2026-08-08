@@ -42,7 +42,7 @@ installer/
     └── voicepacks\*.pt
 ```
 
-Bundled v3 là read-only và không được Model Manager xóa. Model tùy chọn nằm trong app-data.
+Bundled v3 là read-only và không được Model Manager xóa. Model tùy chọn nằm trong app-data dưới cùng một model root, mỗi engine có thư mục con riêng (`vieneu-v2/`, `kokoro-vi/`). Khi tải model mới, Model Manager phải tạo/cập nhật thư mục con đó trong root hiện có, không tạo thư mục lẻ ở ngoài root.
 
 Manifest v3 tối thiểu:
 

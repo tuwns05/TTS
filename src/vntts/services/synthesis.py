@@ -63,7 +63,6 @@ class SynthesizeSpeech:
         if request.options.voice_id not in {voice.voice_id for voice in voices}:
             raise ValidationError("Giọng đọc không tồn tại trong engine đã chọn.")
 
-        # TODO(Giai đoạn 4): áp dụng AudioEffects đúng một lần trong AudioProcessor.
         started_at = time.perf_counter()
         logger.info(
             "Bắt đầu tổng hợp",
@@ -73,7 +72,11 @@ class SynthesizeSpeech:
         try:
             result = self._lifecycle.run_with_active(
                 request.engine_id,
-                lambda engine: engine.synthesize(text, request.options),
+                lambda engine: engine.synthesize(
+                    text,
+                    request.options,
+                    request.effects,
+                ),
             )
         except AppError:
             raise

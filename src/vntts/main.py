@@ -9,6 +9,7 @@ from loguru import logger
 from PySide6.QtWidgets import QApplication
 
 from vntts.config.settings import Settings, load_settings
+from vntts.config.theme import build_stylesheet
 from vntts.engines.factory import EngineFactory, EngineLifecycleManager, EngineRegistry
 from vntts.engines.kokoro_engine import KokoroVIEngine
 from vntts.engines.vieneu_engine import VieNeuV2Engine, VieNeuV3Engine
@@ -16,6 +17,7 @@ from vntts.services.hardware import EngineRecommendationService, HardwareDetecto
 from vntts.services.synthesis import SynthesizeSpeech
 from vntts.ui.compose_view import MainViewModel
 from vntts.ui.main_window import MainWindow
+from vntts.ui.fonts import load_app_fonts
 from vntts.utils.logger import configure_logging, shutdown_logging
 
 
@@ -25,7 +27,9 @@ def build_application(argv: Sequence[str] | None = None) -> tuple[QApplication, 
     settings: Settings = load_settings()
     configure_logging(settings)
     application = QApplication.instance() or QApplication(list(argv or sys.argv))
+    load_app_fonts()
     application.setApplicationName(settings.application.name)
+    application.setStyleSheet(build_stylesheet())
 
     registry = EngineRegistry()
     bundled_v3 = settings.paths.bundled_models_dir / "vieneu-v3"

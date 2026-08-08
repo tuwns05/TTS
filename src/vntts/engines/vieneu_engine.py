@@ -11,6 +11,7 @@ from typing import Protocol
 from vntts.db.models import (
     VIENEU_V2_ENGINE_ID,
     VIENEU_V3_ENGINE_ID,
+    AudioEffects,
     EngineInfo,
     EngineSynthesisOptions,
     SynthesisResult,
@@ -19,6 +20,7 @@ from vntts.db.models import (
 from vntts.engines.base import (
     BaseTTSEngine,
     EngineCapabilities,
+    build_runtime_call_kwargs,
     to_mono_float32,
 )
 from vntts.utils.exceptions import (
@@ -163,6 +165,7 @@ class BaseVieNeuEngine(BaseTTSEngine):
         self,
         text: str,
         options: EngineSynthesisOptions,
+        effects: AudioEffects | None = None,
     ) -> SynthesisResult:
         runtime = self._runtime
         if runtime is None:
@@ -181,10 +184,24 @@ class BaseVieNeuEngine(BaseTTSEngine):
                 reference_path = Path(options.reference_audio_path).expanduser().resolve()
                 if not reference_path.is_file():
                     raise ValidationError("Không tìm thấy tệp âm thanh tham chiếu.")
-                audio = runtime.infer(text=text.strip(), ref_audio=str(reference_path))
+                infer_kwargs = build_runtime_call_kwargs(
+                    runtime=runtime,
+                    method_name="infer",
+                    text=text.strip(),
+                    reference_audio_path=str(reference_path),
+                    effects=effects,
+                )
+                audio = runtime.infer(**infer_kwargs)
             else:
                 voice = runtime.get_preset_voice(options.voice_id)
-                audio = runtime.infer(text=text.strip(), voice=voice)
+                infer_kwargs = build_runtime_call_kwargs(
+                    runtime=runtime,
+                    method_name="infer",
+                    text=text.strip(),
+                    voice=voice,
+                    effects=effects,
+                )
+                audio = runtime.infer(**infer_kwargs)
         except ValidationError:
             raise
         except Exception as exc:
@@ -371,6 +388,7 @@ class VieNeuV3Engine(BaseTTSEngine):
         self,
         text: str,
         options: EngineSynthesisOptions,
+        effects: AudioEffects | None = None,
     ) -> SynthesisResult:
         runtime = self._runtime
         if runtime is None:
@@ -385,10 +403,24 @@ class VieNeuV3Engine(BaseTTSEngine):
                 reference_path = Path(options.reference_audio_path).expanduser().resolve()
                 if not reference_path.is_file():
                     raise ValidationError("Không tìm thấy tệp âm thanh tham chiếu.")
-                audio = runtime.infer(text=text.strip(), ref_audio=str(reference_path))
+                infer_kwargs = build_runtime_call_kwargs(
+                    runtime=runtime,
+                    method_name="infer",
+                    text=text.strip(),
+                    reference_audio_path=str(reference_path),
+                    effects=effects,
+                )
+                audio = runtime.infer(**infer_kwargs)
             else:
                 voice = runtime.get_preset_voice(options.voice_id)
-                audio = runtime.infer(text=text.strip(), voice=voice)
+                infer_kwargs = build_runtime_call_kwargs(
+                    runtime=runtime,
+                    method_name="infer",
+                    text=text.strip(),
+                    voice=voice,
+                    effects=effects,
+                )
+                audio = runtime.infer(**infer_kwargs)
         except ValidationError:
             raise
         except Exception as exc:

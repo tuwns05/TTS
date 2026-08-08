@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from vntts.db.models import EngineSynthesisOptions
+from vntts.db.models import AudioEffects, EngineSynthesisOptions
 from vntts.engines.vieneu_engine import VieNeuV2Engine, VieNeuV3Engine
 from vntts.utils.exceptions import EngineLoadError, ValidationError
 
@@ -162,6 +162,33 @@ def test_vieneu_v3_passes_local_reference_audio(
         "ref_audio": str(reference.resolve()),
     }
     assert result.sample_rate == 48_000
+
+
+def test_vieneu_v3_forwards_audio_effects_to_runtime(tmp_path: Path) -> None:
+    model_path = tmp_path / "vieneu-v3"
+    model_path.mkdir()
+    tokenizer_path = model_path / "moss-tokenizer"
+    tokenizer_path.mkdir()
+    calls: list[dict[str, object]] = []
+
+    class Runtime(_VieNeuRuntime):
+        def infer(self, **kwargs: object) -> np.ndarray:
+            calls.append(kwargs)
+            return super().infer(**kwargs)
+
+    engine = VieNeuV3Engine(
+        model_path,
+        tokenizer_path=tokenizer_path,
+        sdk_factory=lambda **_: Runtime(),
+    )
+    engine.load("cpu")
+
+    effects = AudioEffects(speed=1.25, pitch_semitones=2.0, volume_db=-3.0)
+    engine.synthesize("Xin chào", EngineSynthesisOptions("bac_si_tuyen"), effects)
+
+    assert calls[-1]["speed"] == 1.25
+    assert calls[-1]["pitch"] == 2.0
+    assert calls[-1]["volume"] == -3.0
 
 
 def test_vieneu_v2_rejects_reference_audio(

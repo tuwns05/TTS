@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import inspect
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
 import numpy as np
 
 from vntts.db.models import (
+    AudioEffects,
     EngineInfo,
     EngineSynthesisOptions,
     SynthesisResult,
@@ -72,8 +74,55 @@ class BaseTTSEngine(ABC):
         self,
         text: str,
         options: EngineSynthesisOptions,
+        effects: AudioEffects | None = None,
     ) -> SynthesisResult:
         """Synthesize text into an engine-neutral audio result."""
+
+
+def build_runtime_call_kwargs(
+    *,
+    runtime: object,
+    method_name: str,
+    text: str,
+    voice: object | None = None,
+    reference_audio_path: str | None = None,
+    effects: AudioEffects | None = None,
+) -> dict[str, object]:
+    """Prepare runtime kwargs while respecting the runtime's supported signature."""
+
+    method = getattr(runtime, method_name, None)
+    if not callable(method):
+        raise SynthesisError(f"Runtime không hỗ trợ phương thức '{method_name}'.")
+
+    signature = inspect.signature(method)
+    parameters = signature.parameters.values()
+    accepts_var_kw = any(param.kind == inspect.Parameter.VAR_KEYWORD for param in parameters)
+    accepted_names = {
+        param.name
+        for param in parameters
+        if param.kind
+        in {
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            inspect.Parameter.KEYWORD_ONLY,
+        }
+    }
+
+    kwargs: dict[str, object] = {"text": text}
+    if voice is not None:
+        kwargs["voice"] = voice
+    if reference_audio_path is not None:
+        kwargs["ref_audio"] = reference_audio_path
+    if effects is not None:
+        kwargs["speed"] = effects.speed
+        kwargs["pitch"] = effects.pitch_semitones
+        kwargs["volume"] = effects.volume_db
+        kwargs["pitch_semitones"] = effects.pitch_semitones
+        kwargs["volume_db"] = effects.volume_db
+
+    if accepts_var_kw:
+        return kwargs
+
+    return {key: value for key, value in kwargs.items() if key in accepted_names}
 
 
 def to_mono_float32(value: object) -> np.ndarray:

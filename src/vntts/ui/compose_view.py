@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QObject, QPointF, QThreadPool, Qt, Signal
-from PySide6.QtGui import QColor, QPaintEvent, QPainter, QPen
+from PySide6.QtCore import QObject, QThreadPool, Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QPlainTextEdit,
     QPushButton,
     QSizePolicy,
+    QSlider,
     QVBoxLayout,
     QWidget,
 )
@@ -226,14 +227,22 @@ class EngineSelector(QWidget):
         self.recommendation_label = QLabel(self)
         self.recommendation_label.setObjectName("recommendationLabel")
         self.recommendation_label.setWordWrap(True)
+        self.status_badge = QLabel("Đang chờ", self)
+        self.status_badge.setObjectName("engineStatus")
+        self.status_badge.setProperty("state", "neutral")
         title = QLabel("Engine", self)
         title.setObjectName("sectionTitle")
+        title_row = QHBoxLayout()
+        title_row.setContentsMargins(0, 0, 0, 0)
+        title_row.addWidget(title)
+        title_row.addStretch()
+        title_row.addWidget(self.status_badge)
         field_label = QLabel("Mô hình tổng hợp", self)
         field_label.setObjectName("fieldLabel")
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(8)
-        layout.addWidget(title)
+        layout.addLayout(title_row)
         layout.addSpacing(8)
         layout.addWidget(field_label)
         layout.addWidget(self.combo)
@@ -272,6 +281,14 @@ class EngineSelector(QWidget):
         value = self.combo.currentData()
         return str(value) if value is not None else None
 
+    def set_status(self, text: str, state: str) -> None:
+        """Keep engine state adjacent to the engine it describes."""
+
+        self.status_badge.setText(text)
+        self.status_badge.setProperty("state", state)
+        self.status_badge.style().unpolish(self.status_badge)
+        self.status_badge.style().polish(self.status_badge)
+
     def _emit_current_engine(self) -> None:
         engine_id = self.current_engine_id()
         if engine_id is not None:
@@ -288,21 +305,23 @@ class PlaybackControls(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         layout = QHBoxLayout(self)
-        self.play_button = QPushButton("Play", self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+        self.play_button = QPushButton("▶", self)
         self.play_button.setObjectName("playButton")
-        self.pause_button = QPushButton("Pause", self)
+        self.pause_button = QPushButton("Ⅱ", self)
         self.pause_button.setObjectName("pauseButton")
-        self.stop_button = QPushButton("Stop", self)
+        self.stop_button = QPushButton("■", self)
         self.stop_button.setObjectName("stopButton")
         for button in (self.play_button, self.pause_button, self.stop_button):
-            button.setMinimumHeight(44)
             layout.addWidget(button)
-        self.play_button.setText("Phát")
-        self.pause_button.setText("Tạm dừng")
-        self.stop_button.setText("Dừng")
+        layout.addStretch()
         self.play_button.setAccessibleName("Phát audio")
         self.pause_button.setAccessibleName("Tạm dừng audio")
         self.stop_button.setAccessibleName("Dừng audio")
+        self.play_button.setToolTip("Phát")
+        self.pause_button.setToolTip("Tạm dừng")
+        self.stop_button.setToolTip("Dừng")
         self.play_button.clicked.connect(self.play_requested)
         self.pause_button.clicked.connect(self.pause_requested)
         self.stop_button.clicked.connect(self.stop_requested)
@@ -318,64 +337,80 @@ class PlaybackControls(QWidget):
 
 
 class WaveformPreview(QWidget):
-    """Render a compact, single-color preview of the current waveform."""
+    """Interactive single-track scrubber retained under the legacy class name."""
+
+    seek_requested = Signal(int)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setObjectName("waveformPreview")
-        self.setMinimumHeight(88)
+        self.setObjectName("audioTimeline")
+        self.setMinimumHeight(52)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self._audio: object | None = None
+        self._has_audio = False
+        self._duration_ms = 0
+        self.slider = QSlider(Qt.Orientation.Horizontal, self)
+        self.slider.setObjectName("playbackScrubber")
+        self.slider.setAccessibleName("Vị trí phát audio")
+        self.slider.setRange(0, 0)
+        self.slider.setEnabled(False)
+        self.slider.sliderMoved.connect(self.seek_requested)
+        self.elapsed_label = QLabel("00:00", self)
+        self.elapsed_label.setObjectName("timeLabel")
+        self.duration_label = QLabel("00:00", self)
+        self.duration_label.setObjectName("timeLabel")
+
+        timeline = QHBoxLayout()
+        timeline.setContentsMargins(0, 0, 0, 0)
+        timeline.setSpacing(10)
+        timeline.addWidget(self.elapsed_label)
+        timeline.addWidget(self.slider, 1)
+        timeline.addWidget(self.duration_label)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addLayout(timeline)
 
     @property
     def has_audio(self) -> bool:
         """Return whether a waveform is available for rendering."""
 
-        return int(getattr(self._audio, "size", 0)) > 0
+        return self._has_audio
 
     def set_result(self, result: SynthesisResult) -> None:
-        """Retain only the audio reference required for visual preview."""
+        """Prepare the scrubber using the synthesized clip duration."""
 
-        self._audio = result.audio
-        self.update()
+        duration_ms = round(result.audio.size / result.sample_rate * 1_000)
+        self._has_audio = duration_ms > 0
+        self._duration_ms = max(0, duration_ms)
+        self.slider.setRange(0, self._duration_ms)
+        self.slider.setValue(0)
+        self.slider.setEnabled(self._has_audio)
+        self.elapsed_label.setText("00:00")
+        self.duration_label.setText(self._format_time(self._duration_ms))
 
     def clear(self) -> None:
-        """Return to the empty waveform state."""
+        """Return to the disabled empty-audio state."""
 
-        self._audio = None
-        self.update()
+        self._has_audio = False
+        self._duration_ms = 0
+        self.slider.setRange(0, 0)
+        self.slider.setValue(0)
+        self.slider.setEnabled(False)
+        self.elapsed_label.setText("00:00")
+        self.duration_label.setText("00:00")
 
-    def paintEvent(self, event: QPaintEvent) -> None:
-        super().paintEvent(event)
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        bounds = self.rect().adjusted(16, 12, -16, -12)
-        painter.setPen(QPen(QColor("#DCE7F8"), 1))
-        center_y = bounds.center().y()
-        painter.drawLine(bounds.left(), center_y, bounds.right(), center_y)
+    def set_position(self, position_ms: int) -> None:
+        """Update playback progress without fighting an active drag gesture."""
 
-        audio = self._audio
-        size = int(getattr(audio, "size", 0))
-        if size <= 0:
-            painter.setPen(QColor("#6B7280"))
-            painter.drawText(
-                bounds,
-                Qt.AlignmentFlag.AlignCenter,
-                "Waveform sẽ xuất hiện sau khi tạo giọng nói",
-            )
-            return
+        position = max(0, min(int(position_ms), self._duration_ms))
+        if not self.slider.isSliderDown():
+            self.slider.setValue(position)
+        self.elapsed_label.setText(self._format_time(position))
 
-        bar_count = max(24, min(120, bounds.width() // 6))
-        step = max(1, size // bar_count)
-        painter.setPen(QPen(QColor("#3B82F6"), 2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
-        for index in range(bar_count):
-            start = min(size - 1, index * step)
-            end = min(size, start + step)
-            segment = audio[start:end]
-            peak = float(abs(segment).max()) if getattr(segment, "size", 0) else 0.0
-            height = max(2.0, min(1.0, peak) * bounds.height() * 0.46)
-            x = bounds.left() + (index + 0.5) * bounds.width() / bar_count
-            painter.drawLine(QPointF(x, center_y - height), QPointF(x, center_y + height))
+    @staticmethod
+    def _format_time(milliseconds: int) -> str:
+        seconds = max(0, int(milliseconds)) // 1_000
+        minutes, seconds = divmod(seconds, 60)
+        return f"{minutes:02d}:{seconds:02d}"
 
 
 class TextInputWidget(QWidget):

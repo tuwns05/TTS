@@ -7,6 +7,7 @@ from collections.abc import Callable
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox,
+    QFrame,
     QGridLayout,
     QGroupBox,
     QLabel,
@@ -23,9 +24,12 @@ class VoiceSettingsWidget(QGroupBox):
     """Collect voice and audio-effect values in an accessible card."""
 
     def __init__(self, defaults: AudioSettings, parent: QWidget | None = None) -> None:
-        super().__init__("Thiết lập giọng", parent)
+        super().__init__("Giọng và âm thanh", parent)
         self.setObjectName("voiceSettingsCard")
 
+        helper = QLabel("Chọn giọng đọc và điều chỉnh tốc độ, cao độ, âm lượng trước khi tổng hợp.", self)
+        helper.setObjectName("helperText")
+        helper.setWordWrap(True)
         voice_label = QLabel("Giọng đọc", self)
         voice_label.setObjectName("fieldLabel")
         self.voice_combo = QComboBox(self)
@@ -60,20 +64,29 @@ class VoiceSettingsWidget(QGroupBox):
         self.volume_slider.setObjectName("volumeSlider")
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 24, 16, 16)
-        layout.setSpacing(8)
+        layout.setContentsMargins(18, 24, 18, 18)
+        layout.setSpacing(10)
+        layout.addWidget(helper)
         layout.addWidget(voice_label)
         layout.addWidget(self.voice_combo)
-        layout.addSpacing(8)
+        layout.addWidget(self._divider())
         layout.addLayout(
             self._slider_row("Tốc độ", self.speed_slider, self.speed_value)
         )
+        layout.addWidget(self._divider())
         layout.addLayout(
             self._slider_row("Cao độ", self.pitch_slider, self.pitch_value)
         )
+        layout.addWidget(self._divider())
         layout.addLayout(
             self._slider_row("Âm lượng", self.volume_slider, self.volume_value)
         )
+
+    def _divider(self) -> QFrame:
+        divider = QFrame(self)
+        divider.setObjectName("sectionDivider")
+        divider.setFrameShape(QFrame.Shape.NoFrame)
+        return divider
 
     def _slider(
         self,

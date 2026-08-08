@@ -17,6 +17,7 @@ class PlaybackService(QObject):
     """Own the current waveform, temporary WAV and Qt playback objects."""
 
     state_changed = Signal(str)
+    position_changed = Signal(int)
     error_occurred = Signal(str)
 
     EMPTY = "empty"
@@ -36,6 +37,9 @@ class PlaybackService(QObject):
         self._audio_output.setVolume(1.0)
         self._player = QMediaPlayer(self)
         self._player.setAudioOutput(self._audio_output)
+        self._player.positionChanged.connect(
+            lambda position: self.position_changed.emit(int(position))
+        )
         self._player.playbackStateChanged.connect(self._on_player_state_changed)
         self._player.mediaStatusChanged.connect(self._on_media_status_changed)
         self._player.errorOccurred.connect(self._on_player_error)
@@ -105,6 +109,15 @@ class PlaybackService(QObject):
             return
         self._player.stop()
         self._set_state(self.STOPPED)
+
+    def seek(self, position_ms: int) -> None:
+        """Seek within the current in-memory clip."""
+
+        if not self.has_audio:
+            return
+        duration = self._player.duration()
+        upper_bound = duration if duration > 0 else max(0, int(position_ms))
+        self._player.setPosition(max(0, min(int(position_ms), upper_bound)))
 
     def clear(self) -> None:
         """Release the current waveform, media source and memory buffer."""
