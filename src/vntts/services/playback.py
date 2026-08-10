@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import importlib
 import io
+from pathlib import Path
 import wave
 
 import numpy as np
@@ -84,6 +86,31 @@ class PlaybackService(QObject):
         self._player.setSourceDevice(buffer, QUrl("memory:current-audio.wav"))
         self._set_state(self.READY)
 
+    def export_audio(self, destination: str | Path, audio_format: str) -> Path:
+        """Write the current synthesized clip as WAV or MP3."""
+
+        if self._current_result is None or self._wav_data is None:
+            raise PlaybackError("Chưa có audio để xuất.")
+        normalized_format = audio_format.lower()
+        if normalized_format not in {"wav", "mp3"}:
+            raise PlaybackError(f"Định dạng audio không được hỗ trợ: {audio_format}")
+
+        output_path = Path(destination)
+        if output_path.suffix.lower() != f".{normalized_format}":
+            output_path = output_path.with_suffix(f".{normalized_format}")
+        try:
+            data = (
+                bytes(self._wav_data)
+                if normalized_format == "wav"
+                else self._encode_mp3(self._current_result)
+            )
+            output_path.write_bytes(data)
+        except PlaybackError:
+            raise
+        except OSError as exc:
+            raise PlaybackError(f"Không thể lưu file audio: {exc}") from exc
+        return output_path
+
     def play(self) -> None:
         """Start or resume the current audio."""
 
@@ -150,6 +177,29 @@ class PlaybackService(QObject):
             output.setframerate(result.sample_rate)
             output.writeframes(pcm.tobytes())
         return destination.getvalue()
+
+    @staticmethod
+    def _encode_mp3(result: SynthesisResult) -> bytes:
+        try:
+            lameenc = importlib.import_module("lameenc")
+        except ImportError as exc:
+            raise PlaybackError(
+                "Thiếu bộ mã hóa MP3. Hãy cài dependency 'lameenc'."
+            ) from exc
+
+        audio = np.asarray(result.audio, dtype=np.float32)
+        if audio.ndim != 1 or audio.size == 0 or not bool(np.isfinite(audio).all()):
+            raise PlaybackError("Waveform không hợp lệ để xuất.")
+        pcm = np.rint(np.clip(audio, -1.0, 1.0) * 32_767).astype("<i2")
+        try:
+            encoder = lameenc.Encoder()
+            encoder.set_bit_rate(192)
+            encoder.set_in_sample_rate(result.sample_rate)
+            encoder.set_channels(1)
+            encoder.set_quality(2)
+            return encoder.encode(pcm.tobytes()) + encoder.flush()
+        except Exception as exc:
+            raise PlaybackError(f"Không thể mã hóa MP3: {exc}") from exc
 
     def _on_player_state_changed(
         self,

@@ -160,7 +160,7 @@ def test_vieneu_v3_passes_local_reference_audio(
 
     result = engine.synthesize(
         "Xin chào",
-        EngineSynthesisOptions("bac_si_tuyen", str(reference)),
+        EngineSynthesisOptions("clone:test-profile", str(reference)),
     )
 
     assert calls[-1] == {

@@ -1,96 +1,99 @@
 ---
-name: vong-tts-interface-design
-description: Thiết kế và dựng mockup giao diện desktop cho ứng dụng đọc văn bản tiếng Việt offline "Vọng / Vietnamese TTS Studio" (màn Soạn văn bản, Thư viện giọng, Nhân bản giọng, Cài đặt, và mọi màn hình khác của app). LUÔN dùng skill này khi người dùng yêu cầu thiết kế, làm lại, chỉnh sửa, hoặc góp ý giao diện/UI/UX cho ứng dụng TTS này — kể cả khi họ chỉ nói "làm lại giao diện", "thiết kế màn hình X", "sửa cái UI này giúp mình", hay gửi ảnh chụp màn hình app thật để xin cải tiến — không chỉ khi họ nói rõ "dùng design system". Cung cấp sẵn bảng màu, font chữ, thư viện thành phần (title bar, card, slider, nút, thanh tiến trình phát âm thanh, trạng thái disable...) và nguyên tắc thiết kế đã chốt, để mọi mockup mới đều nhất quán với các mockup trước đó của dự án thay vì bịa lại từ đầu mỗi lần.
+name: minimal-pyqt-desktop-app-ui
+description: "Use when designing or building the visual style for a Python desktop application UI with PyQt6 or PySide6 and you want a simple, clean, modern, native-feeling design system: quiet neutral surfaces, one restrained accent color, comfortable consumer-app density, and disciplined typography — light mode by default. Covers QSS tokens, layout structure (sidebar, toolbar, content, cards), hover/focus states, and what to avoid."
 ---
 
-# Thiết kế giao diện — Vọng / Vietnamese TTS Studio
+# Minimal PyQt Desktop App UI Skill
 
-## Bối cảnh dự án
+## Use When
+- Designing or building the UI for a Python desktop app with **PyQt6** or **PySide6**.
+- The brief asks for "simple", "clean", "minimal", "modern", "friendly" desktop software — not a marketing site, not a mobile app, not a dense pro/technical tool.
+- Starting a new app shell (window, sidebar, toolbar, content) and you need a full design system, not a single widget.
+- This skill defaults to **light mode only** and **comfortable/consumer density**. If a project needs dark mode or a compact/pro density instead, see "Tuning knobs" below — the token structure supports both, only the values change.
 
-Đây là ứng dụng desktop **offline** chuyển văn bản tiếng Việt thành giọng nói (PySide6 + Python), có nhập văn bản đa nguồn (gõ trực tiếp / Word / PDF / txt), tuỳ chỉnh tốc độ - cao độ - âm lượng, phát trực tiếp, và nhân bản giọng nói (Voice Cloning). Ứng dụng chạy trên 3 tầng phần cứng khác nhau (GPU, CPU tầm trung, CPU yếu) với 3 model TTS tương ứng. Tên gọi trong sản phẩm có thể là "Vọng" hoặc "Vietnamese TTS Studio" tuỳ ngữ cảnh người dùng đang dùng — không tự ý đổi tên hiển thị nếu người dùng đã cho biết app thật của họ đang dùng tên nào (ví dụ qua ảnh chụp màn hình), chỉ dùng "Vọng" khi họ chưa có tên cụ thể.
+## Scope
+- Covers: window structure, sidebar, toolbar, content surfaces, cards, buttons, inputs, lists, scrollbars, menus, typography, color, spacing, motion.
+- Does not cover: packaging/distribution (PyInstaller, briefcase, etc.), app icons, or multi-window/dialog architecture beyond basic styling.
+- Ships as a design-token file (`scripts/theme.py`) plus a runnable reference (`demo/demo_app.py`) — copy patterns from the demo into your own app, don't import the demo file directly.
 
-## Khi nào dùng skill này
+## Core principle
+**Design furniture, not decoration.** A desktop app is used for long stretches at a time. Every surface should read as calm and structural by default — hierarchy comes from spacing and font weight, not shadows and gradients. Spend visual boldness on exactly one accent color and nothing else.
 
-- Người dùng xin thiết kế/làm mockup một màn hình mới của app này.
-- Người dùng gửi ảnh chụp màn hình thật của app và xin cải tiến/làm lại giao diện.
-- Người dùng xin góp ý UI/UX cho một phần cụ thể (nút, slider, bảng điều khiển...).
-- Bất kỳ yêu cầu nào liên quan đến hình ảnh/bố cục/trải nghiệm của app TTS này, kể cả khi câu chữ không nhắc đến "design system" hay tên skill.
+## Visual target
+- Neutral surfaces first: window background → panel background (sidebar/toolbar) → content background, separated by a 1px hairline border (`QFrame` with `border: 1px solid`), not a drop shadow.
+- One accent color, used only for the primary button, selection state, and the active nav item. Never let a second saturated color compete with it.
+- Consistent corner radius: 6px for small controls (inputs, list rows), 10px for cards/panels. Avoid 16px+ "app icon" radii — they read as mobile, not desktop.
+- Flat by default. Reserve elevation (a subtle border + slightly heavier background, since Qt's native drop-shadow support is limited) for things that float above content: `QMenu`, popovers, dialogs. Sidebar and toolbar never get a shadow.
+- Native OS title bar by default (simplest, always looks correct). Only build a custom frameless title bar (`Qt.FramelessWindowHint`) if the brief specifically asks for full brand control over the window chrome — see "Tuning knobs".
 
-Nếu người dùng gửi ảnh chụp màn hình thật: **giữ đúng nội dung, nhãn, các trường dữ liệu thật đã có** trong ảnh, chỉ thiết kế lại phần trình bày/tương tác — đừng bịa ra tính năng hay nhãn mới không có trong ảnh trừ khi được yêu cầu.
+## Typography
+- Use the OS system font, not a bundled webfont — `get_system_font()` in `scripts/theme.py` picks `.AppleSystemUIFont` / `"Segoe UI"` / `"Ubuntu"` per platform via `platform.system()`. Qt's `QFont` doesn't support CSS-style fallback lists, so pick explicitly rather than relying on QSS `font-family` alone.
+- Base body size **14px** (comfortable/consumer). A compact/pro variant would use 13px — see "Tuning knobs".
+- Type scale: 11px (caption/meta) → 14px (body) → 15px (section label) → 22px (view title, used once per screen, never a giant hero headline).
+- Weight carries hierarchy: regular body, medium (500) for labels/nav/buttons, semibold (600) for section labels and view titles. Avoid bold walls of text.
+- Set via `QLabel.setProperty("role", "title" | "section" | "caption" | "secondary")` and the matching QSS selectors in `theme.py` — don't set font size/weight inline per-widget.
 
-## Quy trình làm việc
-
-1. **Xác định đúng phạm vi.** Đang thiết kế màn hình nào? Có ảnh chụp thật cần bám theo không? Có vấn đề cụ thể nào người dùng đã chỉ ra cần sửa không (đọc kỹ trước khi vẽ lại)?
-2. **Áp dụng design token & nguyên tắc** ở mục dưới. Với các thành phần lặp lại (title bar, slider, nút, thanh tiến trình phát...), xem `references/components.md` để lấy đúng cấu trúc HTML/CSS đã chuẩn hoá thay vì tự nghĩ ra biến thể mới — điều này giữ mọi mockup của dự án nhất quán với nhau.
-3. **Dựng thành 1 file HTML độc lập** (xem mục "Định dạng bàn giao"). Có thể copy nguyên khối `:root` và các class dùng chung từ `assets/design-tokens.css` làm nền, rồi thêm CSS riêng cho bố cục của màn hình đang thiết kế.
-4. **Rà lại theo checklist** ở cuối file trước khi lưu và gửi cho người dùng.
-
-## Nguyên tắc thiết kế cốt lõi
-
-Đây là những quyết định đã được thống nhất qua nhiều vòng thiết kế thật với người dùng — không phải sở thích cá nhân, mà là kết quả của việc sửa lỗi thực tế đã xảy ra. Hiểu **lý do** phía sau mỗi nguyên tắc để áp dụng đúng tinh thần khi gặp tình huống mới, không chỉ máy móc làm theo.
-
-**Tránh 3 khuôn mẫu thiết kế AI mặc định:** kem + cam đất kiểu tạp chí, đen tuyền + một màu neon duy nhất, hoặc dashboard SaaS trắng-viền-mảnh chung chung. Ứng dụng này đọc giọng nói tiếng Việt — bản sắc thị giác nên gợi được điều đó, không phải trông như bất kỳ landing page AI nào khác.
-
-**Bảng màu graphite tối + đúng 2 màu nhấn**, không hơn: hổ phách ấm (`--amber`) cho hành động chính/gắn với "giọng nói", xanh ngọc lạnh (`--teal`) cho dữ liệu/waveform/trạng thái. Thêm màu thứ 3 làm loãng hệ thống, trừ `--danger` dùng riêng cho hành động phá huỷ (xoá, đóng).
-
-**Font đã chọn vì hỗ trợ tiếng Việt tốt và có cá tính:** Fraunces (tiêu đề, ấm áp kiểu editorial) + Inter (giao diện, dễ đọc) + IBM Plex Mono (số liệu, bộ đếm ký tự, nhãn kỹ thuật, timestamp). Giữ nguyên bộ 3 này cho mọi màn hình, không đổi font tuỳ hứng.
-
-**Khung app phải trông như app desktop thật:** title bar phẳng riêng (không để lọt gradient/màu thừa ở mép), có nút thu nhỏ/phóng to/đóng. Đây là app Windows chạy offline, không phải trang web.
-
-**Chỉ 1 cấp phân tách trực quan.** Đừng lồng card trong card (viền chồng viền gây rối mắt) — nếu cần nhóm nhiều mục trong cùng 1 khối, dùng đường kẻ ngang mảnh (divider) để chia section, không dùng thêm viền/bóng cho từng nhóm con.
-
-**Trạng thái "disabled" phải disabled thật.** Từng có lỗi: nút phát/dừng trông như bấm được dù chưa có audio để phát. Luôn gắn thuộc tính `disabled` thật trên phần tử tương tác được, kèm giảm độ mờ và `cursor: not-allowed` — không chỉ giảm màu cho "có vẻ" mờ.
-
-**Phân biệt rõ nút chính và nút phụ**, và tránh nút "Hủy" đứng mồ côi cạnh nút hành động chính khi không có tác vụ nào đang chạy để huỷ. Nếu cần một hành động phụ, đặt tên đúng việc nó làm (VD: "Xóa nội dung" thay vì "Hủy" chung chung).
-
-**Điều khiển phát âm thanh dùng nút tròn icon**, nút Play chính to hơn và tô màu hổ phách nổi bật, Pause/Stop nhỏ hơn màu trung tính. Với tiến trình phát, **ưu tiên 1 thanh tiến trình (scrubber) dạng `input[type=range]`** thay vì hiển thị nhiều thanh waveform — waveform nhiều thanh chỉ dùng khi người dùng yêu cầu rõ ràng muốn xem dạng sóng.
-
-**Giá trị mặc định của slider phải đúng về mặt kỹ thuật.** Từng có lỗi: cao độ (pitch) mặc định lại nằm ở vị trí max thay vì vị trí trung tính (0 semitone). Với mọi tham số có điểm trung tính (pitch, volume tính theo dB đối xứng...), giá trị mặc định và vị trí thumb phải khớp đúng điểm giữa toán học của thang đo, không áng chừng.
-
-**Badge/trạng thái đặt cạnh control mà nó phản ánh.** Đừng để trạng thái "Engine sẵn sàng" trôi nổi ở khu vực không liên quan — đặt ngay cạnh bộ chọn engine.
-
-**Copy tiếng Việt ngắn gọn, hành động rõ ràng, trung thực về giới hạn kỹ thuật thật.** Ví dụ: nếu một model không hỗ trợ Voice Cloning, nói thẳng điều đó ngay trong UI (banner/ghi chú nhỏ) thay vì giấu đi khiến người dùng tự mò ra bằng cách thử và thất bại.
-
-**Tôn trọng khả năng tiếp cận cơ bản:** `:focus-visible` rõ ràng cho điều hướng bàn phím, tôn trọng `prefers-reduced-motion` để tắt animation khi người dùng yêu cầu giảm chuyển động.
-
-## Design token nhanh
-
-| Token | Giá trị | Dùng cho |
+## Color (light mode tokens)
+| Token | Value | Use |
 |---|---|---|
-| `--ink` | `#12151A` | Nền gốc |
-| `--ink-soft` | `#171B22` | Title bar, nền input |
-| `--panel` | `#1C212B` | Card, panel |
-| `--panel-raised` | `#252B36` | Phần tử nổi lên (nút phụ, hover) |
-| `--border` / `--border-soft` | `#2C3340` / `#232936` | Viền |
-| `--bone` / `--bone-dim` | `#ECE7DC` / `#B9B4A8` | Chữ chính / chữ phụ |
-| `--slate` / `--slate-dim` | `#8891A0` / `#5B6270` | Nhãn mờ, placeholder, disabled |
-| `--amber` / `--amber-soft` | `#E3A857` / tương ứng 14% alpha | Hành động chính, "giọng nói" |
-| `--teal` / `--teal-soft` | `#5FC9C0` / tương ứng 14% alpha | Dữ liệu, waveform, trạng thái sẵn sàng |
-| `--danger` | `#E17B6B` | Hành động phá huỷ |
-| Font | Fraunces / Inter / IBM Plex Mono | Tiêu đề / giao diện / số liệu |
-| Bo góc | `--r-sm 6px` / `--r-md 10px` / `--r-lg 18px` | Nút, ô nhập / card nhỏ / card lớn |
+| `window_bg` | `#F5F5F7` | outermost window background |
+| `panel_bg` | `#FAFAFA` | sidebar, toolbar |
+| `content_bg` | `#FFFFFF` | cards, inputs, list rows |
+| `border` | `#E5E5EA` | hairline between surfaces |
+| `text_primary` | `#1D1D1F` | body text, labels |
+| `text_secondary` | `#6E6E73` | captions, meta, placeholders |
+| `accent` | `#0A84FF` | primary button, selection, active nav |
+| `accent_hover` / `accent_pressed` | derived | button/nav interaction states |
+| `accent_soft` | `rgba(10,132,255,0.12)` | selection background, active-nav background |
 
-Bộ token đầy đủ kèm class dùng chung (nút, slider, card, dock phát...) nằm sẵn trong `assets/design-tokens.css` — copy khối `<style>` này làm nền rồi thêm CSS riêng cho bố cục màn hình mới, thay vì gõ lại từ đầu.
+- The accent is a sensible default (Apple system blue). If the project already has a brand color, swap `THEME.accent` — every hover/pressed/selection state derives from it automatically, don't hand-pick new hex values for each state.
+- Selection and active-nav backgrounds use `accent_soft` (10–15% opacity), not a filled block — reserve the filled block for the one primary button.
+- This skill is scoped to light mode only per the current brief. If dark mode is added later, duplicate `Theme` as `DARK_THEME` with the same field names and swap the surfaces/text per the dark-mode base below — keep every token name identical so widget code never has to change:
+  `window #1E1E1E → panel #252526/#2B2B2D → border #3A3A3C → text #F5F5F7 / #98989D`.
 
-## Thư viện thành phần
+## Implementation guidance (PyQt6 / PySide6 specifics)
+- **Tokens live in one file.** `scripts/theme.py` defines a frozen `Theme` dataclass (`THEME`) and `build_stylesheet(theme) -> str`. Apply once: `app.setStyleSheet(build_stylesheet(THEME))`. Never hardcode a hex color or pixel radius inside a widget file — read it from `THEME.<token>` for anything QSS doesn't cover (e.g. `setFixedWidth(THEME.sidebar_width)`).
+- **QSS has no variables.** Unlike CSS, Qt stylesheets can't reference custom properties, so the token file builds the final QSS string with an f-string. If you add a new token, add it to `Theme` and reference it in `build_stylesheet`, not as a magic number in a `.setStyleSheet()` call somewhere else.
+- **State variants via dynamic properties, not subclassing.** Use `widget.setProperty("variant", "primary")` / `setProperty("nav", "true")` / `setProperty("card", "true")` and match them in QSS with `QPushButton[variant="primary"]`. This keeps one `QPushButton` class usable for every button style. After changing a property at runtime, call `widget.style().unpolish(widget); widget.style().polish(widget)` to force QSS to re-evaluate.
+- **Hover, pressed, focus, disabled — all four, every interactive element.** Qt applies `:hover`, `:pressed`, `:focus`, `:disabled` pseudo-states natively in QSS; there's no excuse to skip them. A visible focus border (`QPushButton:focus { border: 1px solid accent; }`) is not optional — this is a pointer-and-keyboard surface.
+- **Resizable layouts only.** Use `QVBoxLayout`/`QHBoxLayout` with `addStretch()`, not fixed `setGeometry()` coordinates. Fix the sidebar width (`setFixedWidth`), let content stretch. Test by resizing the window narrower and wider.
+- **Motion is limited and that's fine.** Native QSS pseudo-state changes (hover/pressed) are instant — Qt doesn't animate QSS transitions the way CSS does. For hover/selection feedback, instant is acceptable and matches "fast and functional." Only reach for `QPropertyAnimation` (on `windowOpacity`, `geometry`, or a custom animatable property) for deliberate moments like a panel opening or a dialog fading in — keep it to 100–150ms, ease-out, no bounce/spring.
+- **Scrollbars are thin by default here** (`QScrollBar` styled to 8px, no arrow buttons, translucent thumb that darkens on hover) — see `theme.py`. True "hidden until scroll" behavior needs an event filter and is an optional enhancement, not required.
+- **Icons:** keep one icon set and one stroke weight. If you need icon glyphs, `qtawesome` (`pip install qtawesome`) is the simplest way to get consistent Font Awesome / Material icons sized at 16–20px inside Qt widgets; don't mix filled and outline styles.
+- **Switching PyQt6 ↔ PySide6:** `theme.py` only imports `QFont` from the binding; `demo_app.py` imports the rest. Swap `from PySide6.QtWidgets import ...` → `from PyQt6.QtWidgets import ...` (same for `QtCore`/`QtGui`) and `app.exec()` stays the same in both — no QSS or token changes needed.
 
-Xem `references/components.md` để lấy cấu trúc HTML/CSS đã chuẩn hoá cho: title bar, sidebar rail (điều hướng nhiều màn hình), card văn bản có toolbar mở file, panel chia section bằng divider, hàng slider, chip chọn giọng, card chọn model, dropzone tải mẫu giọng, pill trạng thái, dock phát với thanh tiến trình, và các biến thể nút (primary/ghost/link/icon).
+## Recommended patterns
+- **Sidebar** (fixed 240px / `THEME.sidebar_width`): brand label, then nav buttons with `setProperty("nav", "true")` and `setCheckable(True)`, one checked at a time. Active item gets `accent_soft` background + `accent_pressed` text via the `:checked` selector — see `demo/demo_app.py::Sidebar`.
+- **Toolbar** (fixed 52px / `THEME.toolbar_height`): view title on the left (`role="title"`), secondary controls (search, filters) and exactly one primary button on the right.
+- **Cards**: `QFrame` with `setProperty("card", "true")` — hairline border, `radius_md`, `content_bg`. Use for stat tiles, grouped lists, settings sections.
+- **List rows**: `QListWidget` with hover and `:selected` styled via `accent_soft` — see the QSS `QListWidget::item` block. Row height from `THEME.row_height` (42px comfortable).
+- **One primary button per screen**, filled with the accent (`variant="primary"`). Every other action is `variant="secondary"` (bordered, neutral) or a plain nav-style button.
 
-## Định dạng bàn giao
+## Tuning knobs
+- **Density**: this skill ships comfortable (14px body, 42px row height, 10px card radius) for a consumer app. For a compact/pro tool instead, drop to 13px body, 32px row height, 6px radius — same token names, different values.
+- **Dark mode**: not in scope for this brief (light-only), but the token structure is dark-mode-ready — see the Color section above for the swap values if it's needed later.
+- **Chrome style**: native OS title bar (default here, fastest, always correct) vs. fully custom frameless title bar (`Qt.FramelessWindowHint` + a draggable `QWidget` header with your own close/min/max buttons) — only take on the custom route if brand control over the window chrome is an explicit requirement.
+- **Accent color**: swap `THEME.accent` to the project's brand color; everything else derives from it.
 
-- Một file `.html` độc lập: CSS trong `<style>`, JS trong `<script>`, đều nằm chung 1 file — không tách file rời.
-- Nạp font qua thẻ `<link>` tới Google Fonts (Fraunces, Inter, IBM Plex Mono) — cả 3 đều có hỗ trợ tiếng Việt.
-- Icon vẽ bằng SVG inline, không phụ thuộc thư viện icon ngoài.
-- Nếu mockup có trạng thái thay đổi được (VD: bấm "Tạo giọng nói" thì thanh tiến trình mở khoá), **làm tương tác thật bằng JS** thay vì chỉ mô tả bằng lời — người xem cảm nhận được hành vi thật, không chỉ ảnh tĩnh.
-- Lưu file vào `/mnt/user-data/outputs/` và trình bày bằng công cụ present_files.
+## Avoid
+- Mobile patterns: bottom tab bars, oversized touch targets, full-bleed hero sections.
+- Heavy `QGraphicsDropShadowEffect` on every card, or gradients as a primary surface fill — flat surfaces + hairline borders read as "native," not "web page in a window."
+- A giant marketing-style headline in the content area — desktop apps open straight into the work.
+- Skipping `:hover`/`:focus` QSS states "because it looks fine without them" — the pointer and keyboard are the primary input here, not touch.
+- Fixed `setGeometry()` layouts that break the moment the window is resized — always use layout managers.
+- Hardcoding a color or radius inline in a widget file instead of reading it from `THEME` — the first time you need to re-skin, this is what breaks.
+- Mixing multiple accent colors, or using a second saturated color for anything other than a rare, deliberate warning/error/success state (and even then, keep those semantic colors separate from the brand accent).
 
-## Checklist trước khi giao
+## Acceptance checks
+- [ ] Every color, spacing, and radius value comes from `THEME.<token>`, not a hardcoded literal in widget code.
+- [ ] Every interactive element (buttons, nav items, inputs, list rows) has a visible hover state and, where keyboard-focusable, a visible focus state.
+- [ ] Only one accent color appears anywhere in the app.
+- [ ] The window survives being resized narrower and wider without breaking the layout.
+- [ ] Cards and panels use a 1px hairline border, not a drop shadow; shadows (if any) are reserved for menus/dialogs.
+- [ ] `python demo/demo_app.py` runs and visually matches `demo/screenshot.png`.
 
-- [ ] Đúng 2 màu nhấn (hổ phách + xanh ngọc), không có màu thứ 3 lạc vào ngoài `--danger`
-- [ ] Không còn card lồng trong card ở bất kỳ đâu
-- [ ] Mọi phần tử "chưa dùng được" đều có thuộc tính `disabled` thật, không chỉ mờ màu
-- [ ] Vị trí thumb của mọi slider khớp đúng giá trị mặc định về mặt toán học
-- [ ] Nút chính (primary) dễ phân biệt hơn hẳn nút phụ/ghost trong cùng màn hình
-- [ ] Không có nút "Hủy"/"Cancel" đứng cạnh nút chính mà không rõ đang huỷ tác vụ nào
-- [ ] Nếu bám theo ảnh chụp thật: nội dung/nhãn khớp đúng những gì đã có trong ảnh
-- [ ] Copy tiếng Việt tự nhiên, không như dịch máy, phản ánh đúng giới hạn kỹ thuật thật của tính năng
+## Questions to ask (when the brief is vague)
+- Does the project already have a brand accent color, or should it default to system blue (`#0A84FF`)?
+- Is dark mode actually needed for v1, or is light-only (this skill's default) sufficient for now?
+- Native OS title bar, or full custom chrome? (Default: native — faster, always correct.)
+- Any existing screens/widgets to retrofit, or a clean new app shell?

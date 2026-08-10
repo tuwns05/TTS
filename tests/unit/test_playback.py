@@ -73,3 +73,17 @@ def test_invalid_waveform_is_rejected_and_not_retained(qapp) -> None:  # type: i
 
     assert not service.has_audio
     assert service.current_wav_bytes is None
+
+
+def test_export_audio_writes_wav_and_mp3(qapp, tmp_path) -> None:  # type: ignore[no-untyped-def]
+    service = PlaybackService()
+    service.set_audio(_result())
+
+    wav_path = service.export_audio(tmp_path / "speech", "wav")
+    mp3_path = service.export_audio(tmp_path / "speech", "mp3")
+
+    assert wav_path.suffix == ".wav"
+    assert wav_path.read_bytes().startswith(b"RIFF")
+    assert mp3_path.suffix == ".mp3"
+    assert len(mp3_path.read_bytes()) > 0
+    service.shutdown()

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 from PySide6.QtCore import QThreadPool, QTimer
 from PySide6.QtWidgets import QBoxLayout, QFileDialog, QPushButton, QScrollArea
@@ -46,6 +48,62 @@ def test_window_opens(qtbot, settings: Settings) -> None:  # type: ignore[no-unt
     assert window.windowTitle() == settings.application.name
     assert window.synthesize_button.text() == "Tạo giọng nói"
     assert not window.waveform.has_audio
+
+
+def test_compose_page_fits_standard_viewport_without_scrolling(
+    qtbot, settings: Settings
+) -> None:  # type: ignore[no-untyped-def]
+    window, _ = _window(qtbot, settings)
+
+    window.resize(1080, 760)
+    qtbot.waitUntil(lambda: window.responsive_mode == "wide", timeout=1_000)
+
+    assert window._scroll_area.verticalScrollBar().maximum() == 0
+    assert window._scroll_area.horizontalScrollBar().maximum() == 0
+    assert window._player_card.isVisible()
+
+
+def test_sidebar_opens_voice_clone_page_and_creates_profile(
+    qtbot, settings: Settings, tmp_path, monkeypatch
+) -> None:  # type: ignore[no-untyped-def]
+    window, view_model = _window(qtbot, settings)
+    sample = tmp_path / "voice.wav"
+    sample.write_bytes(b"RIFF-sample")
+    monkeypatch.setattr(
+        QFileDialog,
+        "getOpenFileName",
+        lambda *args, **kwargs: (str(sample), "Audio"),
+    )
+
+    window.nav_clone_button.click()
+    window.voice_clone_page.name_input.setText("Giọng của tôi")
+    window.voice_clone_page.upload_button.click()
+    window.voice_clone_page.create_button.click()
+
+    assert window.page_stack.currentIndex() == 1
+    assert window.nav_clone_button.isChecked()
+    assert window.voice_clone_page.profile_list.count() == 1
+    assert "Giọng của tôi" in window.voice_clone_page.profile_list.item(0).text()
+    assert "Sẵn sàng" in window.voice_clone_page.profile_list.item(0).text()
+
+    view_model._selected_engine_id = "vieneu-v3"
+    view_model._selected_capabilities = SimpleNamespace(voice_cloning=True)
+    window._refresh_voice_choices()
+    cloned_index = next(
+        index
+        for index in range(window.voice_selector.voice_combo.count())
+        if str(window.voice_selector.voice_combo.itemData(index)).startswith("clone:")
+    )
+    window.voice_selector.voice_combo.setCurrentIndex(cloned_index)
+    assert window.voice_selector.current_reference_audio_path() is not None
+    synthesis_args: list[tuple] = []
+    monkeypatch.setattr(view_model, "synthesize", lambda *args: synthesis_args.append(args))
+    window.text_input.editor.setPlainText("Xin chào bằng giọng đã nhân bản.")
+
+    window._request_synthesis()
+
+    assert synthesis_args
+    assert synthesis_args[0][4].endswith(".wav")
 
 
 def test_synthesize_button_disabled_for_blank_text(qtbot, settings: Settings) -> None:  # type: ignore[no-untyped-def]
@@ -112,7 +170,7 @@ def test_layout_reflows_at_responsive_breakpoints(
 
     assert window._workspace_layout.direction() == workspace_direction
     assert window._settings_layout.direction() == settings_direction
-    assert isinstance(window.centralWidget(), QScrollArea)
+    assert isinstance(window._scroll_area, QScrollArea)
     assert window._scroll_area.widgetResizable()
 
 
@@ -172,6 +230,39 @@ def test_ui_stays_responsive_during_synthesis(qtbot, settings: Settings) -> None
     assert window.waveform.has_audio
     assert bool(window.waveform.canvas._envelope.max() > 0)
     assert window.status_label.property("state") == "success"
+
+
+def test_export_buttons_choose_destination_after_synthesis(
+    qtbot, settings: Settings, tmp_path, monkeypatch
+) -> None:  # type: ignore[no-untyped-def]
+    window, view_model = _window(qtbot, settings)
+    assert not window.export_wav_button.isEnabled()
+    assert not window.export_mp3_button.isEnabled()
+    window.text_input.editor.setPlainText("Kiểm tra xuất file.")
+    window.synthesize_button.click()
+    qtbot.waitUntil(lambda: view_model.state == "completed", timeout=3_000)
+
+    destinations = iter((tmp_path / "speech.wav", tmp_path / "speech.mp3"))
+    monkeypatch.setattr(
+        QFileDialog,
+        "getSaveFileName",
+        lambda *args, **kwargs: (str(next(destinations)), "Audio"),
+    )
+    exported: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        window._playback,
+        "export_audio",
+        lambda path, audio_format: exported.append((path, audio_format)) or tmp_path / path,
+    )
+
+    window.export_wav_button.click()
+    window.export_mp3_button.click()
+
+    assert exported == [
+        (str(tmp_path / "speech.wav"), "wav"),
+        (str(tmp_path / "speech.mp3"), "mp3"),
+    ]
+    assert "speech.mp3" in window.status_label.text()
 
 
 def test_player_uses_one_button_for_play_and_pause(qtbot, settings: Settings) -> None:  # type: ignore[no-untyped-def]

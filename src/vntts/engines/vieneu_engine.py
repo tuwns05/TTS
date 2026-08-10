@@ -185,7 +185,10 @@ class BaseVieNeuEngine(BaseTTSEngine):
             raise EngineNotLoadedError(f"{self._info.display_name} chưa được load.")
         if not text.strip():
             raise ValidationError("Văn bản không được để trống.")
-        if options.voice_id not in {voice.voice_id for voice in self._voices}:
+        if (
+            options.reference_audio_path is None
+            and options.voice_id not in {voice.voice_id for voice in self._voices}
+        ):
             raise ValidationError("Giọng đọc không tồn tại trong engine đã chọn.")
 
         try:
@@ -400,7 +403,10 @@ class VieNeuV3Engine(BaseTTSEngine):
             raise EngineNotLoadedError("VieNeu-TTS v3-Turbo chưa được load.")
         if not text.strip():
             raise ValidationError("Văn bản không được để trống.")
-        if options.voice_id not in {voice.voice_id for voice in self._voices}:
+        if (
+            options.reference_audio_path is None
+            and options.voice_id not in {voice.voice_id for voice in self._voices}
+        ):
             raise ValidationError("Giọng đọc không tồn tại trong engine đã chọn.")
 
         try:

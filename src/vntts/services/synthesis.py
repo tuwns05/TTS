@@ -158,11 +158,16 @@ class SynthesizeSpeech:
             self._factory.create(request.engine_id)
 
         voices = self.prepare_engine(request.engine_id)
-        if request.options.voice_id not in {voice.voice_id for voice in voices}:
+        capabilities = self._registry.get_capabilities(request.engine_id)
+        uses_reference_audio = request.options.reference_audio_path is not None
+        if uses_reference_audio and not capabilities.voice_cloning:
+            raise ValidationError("Engine đã chọn không hỗ trợ nhân bản giọng.")
+        if (
+            not uses_reference_audio
+            and request.options.voice_id not in {voice.voice_id for voice in voices}
+        ):
             raise ValidationError("Giọng đọc không tồn tại trong engine đã chọn.")
-        supported_styles = self._registry.get_capabilities(
-            request.engine_id
-        ).supported_style_ids
+        supported_styles = capabilities.supported_style_ids
         if request.options.style_id not in supported_styles:
             raise ValidationError(
                 "Phong cách đọc không được engine đã chọn hỗ trợ."

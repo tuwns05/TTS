@@ -6,6 +6,7 @@ import pytest
 from loguru import logger
 
 from vntts.db.models import AudioEffects, EngineSynthesisOptions, SynthesisRequest
+from vntts.engines.base import EngineCapabilities
 from vntts.engines.factory import EngineFactory, EngineRegistry
 from vntts.services.synthesis import SynthesizeSpeech
 from vntts.utils.exceptions import EngineNotFoundError, ValidationError
@@ -68,6 +69,45 @@ def test_loads_engine_and_returns_valid_result() -> None:
 
     assert result.audio.ndim == 1
     assert result.sample_rate > 0
+
+
+def test_clone_request_bypasses_preset_validation(tmp_path) -> None:
+    class CloneCapableStub(StubTTSEngine):
+        CAPABILITIES = EngineCapabilities(
+            voice_cloning=True,
+            native_speed_control=False,
+            native_pitch_control=False,
+            streaming=False,
+            cpu_supported=True,
+            gpu_supported=False,
+        )
+        received_options: EngineSynthesisOptions | None = None
+
+        def synthesize(self, text, options):  # type: ignore[no-untyped-def]
+            CloneCapableStub.received_options = options
+            preset_options = EngineSynthesisOptions("female-south")
+            return super().synthesize(text, preset_options)
+
+    registry = EngineRegistry()
+    registry.register(
+        "stub",
+        CloneCapableStub,
+        CloneCapableStub.INFO,
+        CloneCapableStub.CAPABILITIES,
+    )
+    reference = tmp_path / "voice.wav"
+    reference.write_bytes(b"RIFF-sample")
+    request = SynthesisRequest(
+        text="Xin chào",
+        engine_id="stub",
+        options=EngineSynthesisOptions("clone:profile", str(reference)),
+        effects=AudioEffects(),
+    )
+
+    result = SynthesizeSpeech(EngineFactory(registry), registry).execute(request)
+
+    assert result.audio.size > 0
+    assert CloneCapableStub.received_options == request.options
 
 
 def test_speed_control_changes_duration_without_changing_sample_rate() -> None:

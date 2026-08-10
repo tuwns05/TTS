@@ -9,7 +9,7 @@ from loguru import logger
 from PySide6.QtWidgets import QApplication
 
 from vntts.config.settings import Settings, load_settings
-from vntts.config.theme import build_stylesheet
+from vntts.config.theme import build_stylesheet, get_system_font
 from vntts.engines.factory import EngineFactory, EngineLifecycleManager, EngineRegistry
 from vntts.engines.kokoro_engine import KokoroVIEngine
 from vntts.engines.vieneu_engine import VieNeuV2Engine, VieNeuV3Engine
@@ -29,6 +29,7 @@ def build_application(argv: Sequence[str] | None = None) -> tuple[QApplication, 
     application = QApplication.instance() or QApplication(list(argv or sys.argv))
     load_app_fonts()
     application.setApplicationName(settings.application.name)
+    application.setFont(get_system_font())
     application.setStyleSheet(build_stylesheet())
 
     registry = EngineRegistry()

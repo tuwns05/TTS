@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from vntts.config.settings import Settings
-from vntts.config.theme import Color
+from vntts.config.theme import THEME
 from vntts.db.models import (
     AudioEffects,
     EngineInfo,
@@ -154,6 +154,7 @@ class MainViewModel(QObject):
         effects: AudioEffects,
         voice_id: str | None,
         style_id: str = "tu_nhien",
+        reference_audio_path: str | None = None,
     ) -> None:
         """Build a request and execute synthesis outside the UI thread."""
 
@@ -162,10 +163,19 @@ class MainViewModel(QObject):
                 raise ValidationError("Vui lòng chọn engine.")
             if voice_id is None:
                 raise ValidationError("Vui lòng chọn giọng đọc.")
+            if voice_id.startswith("clone:") and not reference_audio_path:
+                raise ValidationError(
+                    "Hồ sơ giọng nhân bản không còn file âm thanh mẫu. "
+                    "Vui lòng tạo lại hồ sơ."
+                )
             request = SynthesisRequest(
                 text=text,
                 engine_id=self._selected_engine_id,
-                options=EngineSynthesisOptions(voice_id=voice_id, style_id=style_id),
+                options=EngineSynthesisOptions(
+                    voice_id=voice_id,
+                    reference_audio_path=reference_audio_path,
+                    style_id=style_id,
+                ),
                 effects=effects,
             )
         except AppError as exc:
@@ -252,11 +262,16 @@ class EngineSelector(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("enginePanel")
+        self.setProperty("card", True)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.combo = QComboBox(self)
         self.combo.setObjectName("engineCombo")
         self.combo.setAccessibleName("Engine tổng hợp")
-        self.combo.setMinimumHeight(44)
+        self.combo.setMinimumHeight(38)
+        self.combo.setSizePolicy(
+            QSizePolicy.Policy.Ignored,
+            QSizePolicy.Policy.Fixed,
+        )
         self.recommendation_label = QLabel(self)
         self.recommendation_label.setObjectName("recommendationLabel")
         self.recommendation_label.setWordWrap(True)
@@ -265,6 +280,7 @@ class EngineSelector(QWidget):
         self.status_badge.setProperty("state", "neutral")
         title = QLabel("Engine", self)
         title.setObjectName("sectionTitle")
+        title.setProperty("role", "section")
         title_row = QHBoxLayout()
         title_row.setContentsMargins(0, 0, 0, 0)
         title_row.addWidget(title)
@@ -272,14 +288,13 @@ class EngineSelector(QWidget):
         title_row.addWidget(self.status_badge)
         field_label = QLabel("Mô hình tổng hợp", self)
         field_label.setObjectName("fieldLabel")
+        field_label.hide()
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(18, 18, 18, 18)
-        layout.setSpacing(8)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(6)
         layout.addLayout(title_row)
-        layout.addSpacing(8)
-        layout.addWidget(field_label)
         layout.addWidget(self.combo)
-        layout.addWidget(self.recommendation_label)
+        self.recommendation_label.hide()
         self.combo.currentIndexChanged.connect(self._emit_current_engine)
 
     def set_engines(self, engines: list[EngineInfo], selected_id: str | None = None) -> None:
@@ -301,10 +316,9 @@ class EngineSelector(QWidget):
 
         if recommendation is None:
             self.recommendation_label.clear()
-            self.recommendation_label.hide()
+            self.combo.setToolTip("")
             return
-        self.recommendation_label.show()
-        self.recommendation_label.setText(
+        self.combo.setToolTip(
             f"Khuyến nghị khi khả dụng: {recommendation.engine_id} — {recommendation.reason}"
         )
 
@@ -342,8 +356,10 @@ class PlaybackControls(QWidget):
         layout.setSpacing(12)
         self.play_button = QPushButton(self)
         self.play_button.setObjectName("playButton")
+        self.play_button.setProperty("variant", "primary")
         self.stop_button = QPushButton(self)
         self.stop_button.setObjectName("stopButton")
+        self.stop_button.setProperty("variant", "secondary")
         layout.addWidget(self.play_button)
         layout.addWidget(self.stop_button)
         self.play_button.setAccessibleName("Phát audio")
@@ -462,7 +478,7 @@ class WaveformCanvas(QWidget):
             fraction = index / max(1, count - 1)
             height = 8.0 + float(amplitude) * (maximum_height - 8.0)
             x = bounds.left() + index * bar_step
-            color = Color.AMBER if self._has_audio and fraction <= progress else Color.BORDER
+            color = THEME.accent if self._has_audio and fraction <= progress else THEME.border
             painter.setBrush(QColor(color))
             painter.drawRoundedRect(
                 QRectF(x, center_y - height / 2, bar_width, height),
@@ -472,7 +488,7 @@ class WaveformCanvas(QWidget):
 
         if self._has_audio:
             playhead_x = bounds.left() + progress * bounds.width()
-            painter.setPen(QPen(QColor(Color.AMBER), 2.0))
+            painter.setPen(QPen(QColor(THEME.accent), 2.0))
             painter.drawLine(int(playhead_x), bounds.top(), int(playhead_x), bounds.bottom())
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
@@ -575,18 +591,26 @@ class TextInputWidget(QWidget):
         self.editor.setObjectName("textInput")
         self.editor.setPlaceholderText("Nhập văn bản cần tạo giọng nói...")
         self.editor.setAccessibleName("Nội dung")
-        self.editor.setMinimumHeight(280)
+        self.editor.setMinimumHeight(180)
+        self.editor.setSizePolicy(
+            QSizePolicy.Policy.Ignored,
+            QSizePolicy.Policy.Expanding,
+        )
         self.character_count = QLabel(self)
         self.character_count.setObjectName("characterCount")
         self.open_file_button = QPushButton("Mở tệp", self)
         self.open_file_button.setObjectName("openFileButton")
+        self.open_file_button.setProperty("variant", "secondary")
         self.open_file_button.setAccessibleName("Mở tệp văn bản")
         self.open_file_button.setToolTip("Nhập nội dung từ TXT, SRT, DOCX hoặc PDF")
 
         title = QLabel("Nội dung", self)
         title.setObjectName("sectionTitle")
+        title.setProperty("role", "section")
         helper = QLabel("Nhập hoặc dán nội dung cần chuyển thành giọng nói.", self)
         helper.setObjectName("helperText")
+        helper.setProperty("role", "secondary")
+        helper.setWordWrap(True)
         header = QHBoxLayout()
         header.addWidget(title)
         header.addStretch()
