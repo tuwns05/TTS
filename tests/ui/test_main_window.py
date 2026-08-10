@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
+import soundfile as sf
 from PySide6.QtCore import QThreadPool, QTimer
 from PySide6.QtWidgets import QBoxLayout, QFileDialog, QPushButton, QScrollArea
 
@@ -68,7 +70,9 @@ def test_sidebar_opens_voice_clone_page_and_creates_profile(
 ) -> None:  # type: ignore[no-untyped-def]
     window, view_model = _window(qtbot, settings)
     sample = tmp_path / "voice.wav"
-    sample.write_bytes(b"RIFF-sample")
+    sample_rate = 8_000
+    timeline = np.arange(sample_rate * 9, dtype=np.float32) / sample_rate
+    sf.write(sample, 0.2 * np.sin(2 * np.pi * 180 * timeline), sample_rate)
     monkeypatch.setattr(
         QFileDialog,
         "getOpenFileName",
@@ -85,6 +89,22 @@ def test_sidebar_opens_voice_clone_page_and_creates_profile(
     assert window.voice_clone_page.profile_list.count() == 1
     assert "Giọng của tôi" in window.voice_clone_page.profile_list.item(0).text()
     assert "Sẵn sàng" in window.voice_clone_page.profile_list.item(0).text()
+    assert "8 giây" in window.voice_clone_page.processing_label.text()
+    assert window.voice_clone_page.profile_list.currentItem() is not None
+    assert window.voice_clone_page.preview_button.isEnabled()
+    played_sources: list[str] = []
+    monkeypatch.setattr(
+        window.voice_clone_page._preview_player,
+        "play",
+        lambda: played_sources.append(
+            window.voice_clone_page._preview_player.source().toLocalFile()
+        ),
+    )
+
+    window.voice_clone_page.preview_button.click()
+
+    assert len(played_sources) == 1
+    assert played_sources[0].endswith(".wav")
 
     view_model._selected_engine_id = "vieneu-v3"
     view_model._selected_capabilities = SimpleNamespace(voice_cloning=True)

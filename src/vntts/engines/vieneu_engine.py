@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib
 import importlib.util
 import re
+import warnings
 from collections.abc import Callable
 from pathlib import Path
 from typing import Protocol
@@ -414,11 +415,20 @@ class VieNeuV3Engine(BaseTTSEngine):
                 reference_path = Path(options.reference_audio_path).expanduser().resolve()
                 if not reference_path.is_file():
                     raise ValidationError("Không tìm thấy tệp âm thanh tham chiếu.")
-                audio = runtime.infer(
-                    text=text.strip(),
-                    ref_audio=str(reference_path),
-                    style=options.style_id,
-                )
+                with warnings.catch_warnings():
+                    warnings.filterwarnings(
+                        "ignore",
+                        message=(
+                            r"In 2\.9, this function's implementation will be changed "
+                            r"to use torchaudio\.load_with_torchcodec.*"
+                        ),
+                        category=UserWarning,
+                    )
+                    audio = runtime.infer(
+                        text=text.strip(),
+                        ref_audio=str(reference_path),
+                        style=options.style_id,
+                    )
             else:
                 voice = runtime.get_preset_voice(options.voice_id)
                 audio = runtime.infer(

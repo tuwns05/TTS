@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
-import shutil
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from uuid import uuid4
 
+import soundfile as sf
+
+from vntts.services.audio_processor import preprocess_reference_audio
 from vntts.utils.exceptions import ValidationError
 
 
@@ -19,10 +21,11 @@ class VoiceProfile:
     name: str
     reference_audio_path: str
     status: str = "ready"
+    warnings: tuple[str, ...] = ()
 
 
 class VoiceProfileStore:
-    """Copy reference audio into app data and persist lightweight metadata."""
+    """Preprocess reference audio and persist reusable local profiles."""
 
     SUPPORTED_SUFFIXES = {".wav", ".mp3", ".flac", ".m4a", ".ogg"}
 
@@ -37,7 +40,16 @@ class VoiceProfileStore:
             return []
         try:
             payload = json.loads(self._index_path.read_text(encoding="utf-8"))
-            return [VoiceProfile(**item) for item in payload]
+            return [
+                VoiceProfile(
+                    profile_id=item["profile_id"],
+                    name=item["name"],
+                    reference_audio_path=item["reference_audio_path"],
+                    status=item.get("status", "ready"),
+                    warnings=tuple(item.get("warnings", ())),
+                )
+                for item in payload
+            ]
         except (OSError, ValueError, TypeError, KeyError) as exc:
             raise ValidationError("Không thể đọc danh sách hồ sơ giọng.") from exc
 
@@ -46,17 +58,28 @@ class VoiceProfileStore:
         source = Path(source_audio).expanduser().resolve()
         if not source.is_file():
             raise ValidationError("Không tìm thấy file âm thanh mẫu.")
-        suffix = source.suffix.lower()
-        if suffix not in self.SUPPORTED_SUFFIXES:
+        if source.suffix.lower() not in self.SUPPORTED_SUFFIXES:
             raise ValidationError("File mẫu phải là WAV, MP3, FLAC, M4A hoặc OGG.")
 
+        processed = preprocess_reference_audio(source)
         profile_id = uuid4().hex
-        destination = self._audio_dir / f"{profile_id}{suffix}"
+        destination = self._audio_dir / f"{profile_id}.wav"
         try:
-            shutil.copy2(source, destination)
-        except OSError as exc:
+            sf.write(
+                destination,
+                processed.audio,
+                processed.sample_rate,
+                format="WAV",
+                subtype="PCM_16",
+            )
+        except (OSError, RuntimeError, ValueError, sf.SoundFileError) as exc:
             raise ValidationError("Không thể lưu file âm thanh mẫu.") from exc
-        profile = VoiceProfile(profile_id, normalized_name, str(destination.resolve()))
+        profile = VoiceProfile(
+            profile_id,
+            normalized_name,
+            str(destination.resolve()),
+            warnings=processed.warnings,
+        )
         profiles = self.list_profiles()
         profiles.append(profile)
         try:
@@ -76,6 +99,7 @@ class VoiceProfileStore:
                     normalized_name,
                     profile.reference_audio_path,
                     profile.status,
+                    profile.warnings,
                 )
                 profiles[index] = updated
                 self._save(profiles)

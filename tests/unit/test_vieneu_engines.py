@@ -1,6 +1,7 @@
 """Contract tests for VieNeu adapters without loading real models."""
 
 from pathlib import Path
+import warnings
 
 import numpy as np
 import pytest
@@ -147,6 +148,11 @@ def test_vieneu_v3_passes_local_reference_audio(
     class Runtime(_VieNeuRuntime):
         def infer(self, **kwargs: object) -> np.ndarray:
             calls.append(kwargs)
+            warnings.warn(
+                "In 2.9, this function's implementation will be changed to use "
+                "torchaudio.load_with_torchcodec under the hood.",
+                UserWarning,
+            )
             return super().infer(**kwargs)
 
     engine = VieNeuV3Engine(
@@ -158,10 +164,12 @@ def test_vieneu_v3_passes_local_reference_audio(
     reference = tmp_path / "reference.wav"
     reference.write_bytes(b"audio")
 
-    result = engine.synthesize(
-        "Xin chào",
-        EngineSynthesisOptions("clone:test-profile", str(reference)),
-    )
+    with warnings.catch_warnings(record=True) as captured:
+        warnings.simplefilter("always")
+        result = engine.synthesize(
+            "Xin chào",
+            EngineSynthesisOptions("clone:test-profile", str(reference)),
+        )
 
     assert calls[-1] == {
         "text": "Xin chào",
@@ -169,6 +177,7 @@ def test_vieneu_v3_passes_local_reference_audio(
         "style": "tu_nhien",
     }
     assert result.sample_rate == 48_000
+    assert captured == []
 
 
 def test_vieneu_v3_only_passes_supported_arguments_to_runtime(tmp_path: Path) -> None:

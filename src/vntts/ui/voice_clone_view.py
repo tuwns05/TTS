@@ -6,9 +6,11 @@ from pathlib import Path
 
 from PySide6.QtCore import QStandardPaths, Qt, QUrl, Signal
 from PySide6.QtMultimedia import (
+    QAudioOutput,
     QAudioInput,
     QMediaCaptureSession,
     QMediaFormat,
+    QMediaPlayer,
     QMediaRecorder,
 )
 from PySide6.QtWidgets import (
@@ -69,6 +71,7 @@ class VoiceClonePage(QWidget):
         self.processing_label = QLabel("●  Chờ mẫu giọng", form)
         self.processing_label.setObjectName("profileStatusLabel")
         self.processing_label.setProperty("state", "neutral")
+        self.processing_label.setWordWrap(True)
 
         source_actions = QHBoxLayout()
         source_actions.addWidget(self.upload_button)
@@ -94,9 +97,16 @@ class VoiceClonePage(QWidget):
         self.profile_list.setAccessibleName("Danh sách hồ sơ giọng")
         self.rename_button = QPushButton("Sửa tên", profiles_card)
         self.delete_button = QPushButton("Xóa", profiles_card)
+        self.preview_button = QPushButton("Nghe mẫu", profiles_card)
+        self.preview_button.setAccessibleName("Nghe file mẫu giọng đã xử lý")
+        self.stop_preview_button = QPushButton("Dừng nghe", profiles_card)
         self.rename_button.setEnabled(False)
         self.delete_button.setEnabled(False)
+        self.preview_button.setEnabled(False)
+        self.stop_preview_button.setEnabled(False)
         profile_actions = QHBoxLayout()
+        profile_actions.addWidget(self.preview_button)
+        profile_actions.addWidget(self.stop_preview_button)
         profile_actions.addStretch()
         profile_actions.addWidget(self.rename_button)
         profile_actions.addWidget(self.delete_button)
@@ -123,6 +133,13 @@ class VoiceClonePage(QWidget):
         self._recorder.setMediaFormat(media_format)
         self._capture_session.setAudioInput(self._audio_input)
         self._capture_session.setRecorder(self._recorder)
+        self._preview_audio_output = QAudioOutput(self)
+        self._preview_player = QMediaPlayer(self)
+        self._preview_player.setAudioOutput(self._preview_audio_output)
+        self._preview_player.playbackStateChanged.connect(
+            self._preview_state_changed
+        )
+        self._preview_player.errorOccurred.connect(self._preview_error)
 
         self.upload_button.clicked.connect(self._choose_audio)
         self.record_button.clicked.connect(self._toggle_recording)
@@ -130,6 +147,8 @@ class VoiceClonePage(QWidget):
         self.profile_list.currentItemChanged.connect(self._selection_changed)
         self.rename_button.clicked.connect(self._rename_profile)
         self.delete_button.clicked.connect(self._delete_profile)
+        self.preview_button.clicked.connect(self._play_selected_profile)
+        self.stop_preview_button.clicked.connect(self._preview_player.stop)
         self.name_input.textChanged.connect(self._refresh_create_button)
         self._reload_profiles()
 
@@ -142,6 +161,7 @@ class VoiceClonePage(QWidget):
 
         if self._recorder.recorderState() == QMediaRecorder.RecorderState.RecordingState:
             self._recorder.stop()
+        self._preview_player.stop()
 
     def _choose_audio(self) -> None:
         source, _selected_filter = QFileDialog.getOpenFileName(
@@ -184,7 +204,7 @@ class VoiceClonePage(QWidget):
         self.processing_label.setText("●  Đang xử lý và lưu hồ sơ...")
         self._set_status("busy")
         try:
-            self._store.create(self.name_input.text(), self._selected_audio)
+            profile = self._store.create(self.name_input.text(), self._selected_audio)
         except AppError as exc:
             self.processing_label.setText(f"●  Lỗi: {exc}")
             self._set_status("error")
@@ -192,9 +212,15 @@ class VoiceClonePage(QWidget):
         self.name_input.clear()
         self._selected_audio = None
         self.audio_label.setText("Chưa chọn mẫu giọng")
-        self.processing_label.setText("●  Hồ sơ đã xử lý · Sẵn sàng")
-        self._set_status("success")
-        self._reload_profiles()
+        if profile.warnings:
+            self.processing_label.setText(
+                "●  Hồ sơ đã lưu · Cảnh báo: " + " ".join(profile.warnings)
+            )
+            self._set_status("busy")
+        else:
+            self.processing_label.setText("●  Hồ sơ đã xử lý · Sẵn sàng")
+            self._set_status("success")
+        self._reload_profiles(profile.profile_id)
 
     def _rename_profile(self) -> None:
         profile = self._current_profile()
@@ -223,6 +249,7 @@ class VoiceClonePage(QWidget):
         )
         if answer != QMessageBox.StandardButton.Yes:
             return
+        self._preview_player.stop()
         try:
             self._store.delete(profile.profile_id)
         except AppError as exc:
@@ -233,13 +260,15 @@ class VoiceClonePage(QWidget):
         self._set_status("neutral")
         self._reload_profiles()
 
-    def _reload_profiles(self) -> None:
+    def _reload_profiles(self, selected_profile_id: str | None = None) -> None:
         profiles = self._store.list_profiles()
         self.profile_list.clear()
         for profile in profiles:
             item = QListWidgetItem(f"{profile.name}  ·  Sẵn sàng")
             item.setData(Qt.ItemDataRole.UserRole, profile)
             self.profile_list.addItem(item)
+            if profile.profile_id == selected_profile_id:
+                self.profile_list.setCurrentItem(item)
         self.profiles_changed.emit(profiles)
 
     def _current_profile(self) -> VoiceProfile | None:
@@ -251,6 +280,35 @@ class VoiceClonePage(QWidget):
         enabled = current is not None
         self.rename_button.setEnabled(enabled)
         self.delete_button.setEnabled(enabled)
+        self.preview_button.setEnabled(enabled)
+        if not enabled:
+            self._preview_player.stop()
+
+    def _play_selected_profile(self) -> None:
+        profile = self._current_profile()
+        if profile is None:
+            return
+        source = Path(profile.reference_audio_path)
+        if not source.is_file():
+            self.processing_label.setText("●  Lỗi: Không tìm thấy file mẫu đã xử lý.")
+            self._set_status("error")
+            return
+        self._preview_player.setSource(QUrl.fromLocalFile(str(source)))
+        self._preview_player.play()
+
+    def _preview_state_changed(self, state: QMediaPlayer.PlaybackState) -> None:
+        is_playing = state == QMediaPlayer.PlaybackState.PlayingState
+        self.preview_button.setText("Đang nghe..." if is_playing else "Nghe mẫu")
+        self.stop_preview_button.setEnabled(is_playing)
+        if is_playing:
+            self.processing_label.setText("●  Đang phát file mẫu đã xử lý")
+            self._set_status("busy")
+
+    def _preview_error(self, _error: QMediaPlayer.Error, message: str) -> None:
+        self.processing_label.setText(
+            f"●  Lỗi nghe mẫu: {message or 'Thiết bị phát âm thanh không khả dụng.'}"
+        )
+        self._set_status("error")
 
     def _refresh_create_button(self) -> None:
         self.create_button.setEnabled(
