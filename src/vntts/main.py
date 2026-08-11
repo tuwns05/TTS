@@ -15,6 +15,8 @@ from vntts.engines.kokoro_engine import KokoroVIEngine
 from vntts.engines.vieneu_engine import VieNeuV2Engine, VieNeuV3Engine
 from vntts.services.hardware import EngineRecommendationService, HardwareDetector
 from vntts.services.synthesis import SynthesizeSpeech
+from vntts.services.voice_enrollment import VoiceEnrollmentService
+from vntts.services.voice_profiles import VoiceProfileStore
 from vntts.ui.compose_view import MainViewModel
 from vntts.ui.main_window import MainWindow
 from vntts.ui.fonts import load_app_fonts
@@ -79,8 +81,20 @@ def build_application(argv: Sequence[str] | None = None) -> tuple[QApplication, 
     recommendation = EngineRecommendationService(
         settings.hardware_recommendation
     ).recommend(hardware)
-    view_model = MainViewModel(registry, use_case, settings, recommendation)
-    window = MainWindow(view_model, settings)
+    voice_profile_store = VoiceProfileStore(settings.paths.data_dir)
+    voice_enrollment = VoiceEnrollmentService(use_case, voice_profile_store)
+    view_model = MainViewModel(
+        registry,
+        use_case,
+        settings,
+        recommendation,
+        voice_enrollment_service=voice_enrollment,
+    )
+    window = MainWindow(
+        view_model,
+        settings,
+        voice_profile_store=voice_profile_store,
+    )
 
     logger.info(
         "Ứng dụng khởi động",

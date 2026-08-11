@@ -159,11 +159,14 @@ class SynthesizeSpeech:
 
         voices = self.prepare_engine(request.engine_id)
         capabilities = self._registry.get_capabilities(request.engine_id)
-        uses_reference_audio = request.options.reference_audio_path is not None
-        if uses_reference_audio and not capabilities.voice_cloning:
+        uses_cloned_voice = (
+            request.options.reference_audio_path is not None
+            or request.options.voice_artifact_path is not None
+        )
+        if uses_cloned_voice and not capabilities.voice_cloning:
             raise ValidationError("Engine đã chọn không hỗ trợ nhân bản giọng.")
         if (
-            not uses_reference_audio
+            not uses_cloned_voice
             and request.options.voice_id not in {voice.voice_id for voice in voices}
         ):
             raise ValidationError("Giọng đọc không tồn tại trong engine đã chọn.")
@@ -196,6 +199,22 @@ class SynthesizeSpeech:
             duration_seconds=round(time.perf_counter() - started_at, 3),
         )
         return result
+
+    def encode_voice_reference(
+        self,
+        engine_id: str,
+        reference_audio_path: str,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Extract reusable clone features with the active engine."""
+
+        self.prepare_engine(engine_id)
+        capabilities = self._registry.get_capabilities(engine_id)
+        if not capabilities.voice_cloning:
+            raise ValidationError("Engine đã chọn không hỗ trợ nhân bản giọng.")
+        return self._lifecycle.run_with_active(
+            engine_id,
+            lambda engine: engine.encode_voice_reference(reference_audio_path),
+        )
 
     def unload_all(self) -> None:
         """Release every cached engine adapter during shutdown."""

@@ -53,18 +53,18 @@ class VoiceSelectorWidget(QGroupBox):
     def set_voices(
         self,
         voices: list[VoiceInfo],
-        reference_audio_paths: dict[str, str] | None = None,
+        voice_artifact_paths: dict[str, str] | None = None,
     ) -> None:
         """Replace available voices and enable selection when non-empty."""
 
         self.voice_combo.clear()
-        reference_paths = reference_audio_paths or {}
+        artifact_paths = voice_artifact_paths or {}
         for voice in voices:
             self.voice_combo.addItem(voice.display_name, voice.voice_id)
             index = self.voice_combo.count() - 1
             self.voice_combo.setItemData(
                 index,
-                reference_paths.get(voice.voice_id),
+                artifact_paths.get(voice.voice_id),
                 Qt.ItemDataRole.UserRole + 1,
             )
         self.voice_combo.setEnabled(bool(voices))
@@ -75,8 +75,8 @@ class VoiceSelectorWidget(QGroupBox):
         value = self.voice_combo.currentData()
         return str(value) if value is not None else None
 
-    def current_reference_audio_path(self) -> str | None:
-        """Return the reference file paired with the selected cloned voice."""
+    def current_voice_artifact_path(self) -> str | None:
+        """Return the numerical feature artifact for a selected cloned voice."""
 
         value = self.voice_combo.currentData(Qt.ItemDataRole.UserRole + 1)
         return str(value) if value else None

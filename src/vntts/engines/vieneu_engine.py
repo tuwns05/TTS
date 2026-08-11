@@ -10,6 +10,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Protocol
 
+import numpy as np
+
 from vntts.db.models import (
     VIENEU_V2_ENGINE_ID,
     VIENEU_V3_ENGINE_ID,
@@ -37,6 +39,8 @@ class _VieNeuRuntime(Protocol):
     def get_preset_voice(self, voice_name: str) -> object: ...
 
     def infer(self, **kwargs: object) -> object: ...
+
+    def encode_reference(self, ref_audio: str, denoise: bool = True) -> object: ...
 
     def close(self) -> None: ...
 
@@ -149,7 +153,9 @@ class BaseVieNeuEngine(BaseTTSEngine):
             close_method = getattr(close, "close", None)
             if callable(close_method):
                 close_method()
-            raise EngineLoadError(f"Không thể khởi tạo {self._info.display_name}.") from exc
+            raise EngineLoadError(
+                f"Không thể khởi tạo {self._info.display_name}."
+            ) from exc
 
         if not voices:
             runtime.close()
@@ -186,10 +192,9 @@ class BaseVieNeuEngine(BaseTTSEngine):
             raise EngineNotLoadedError(f"{self._info.display_name} chưa được load.")
         if not text.strip():
             raise ValidationError("Văn bản không được để trống.")
-        if (
-            options.reference_audio_path is None
-            and options.voice_id not in {voice.voice_id for voice in self._voices}
-        ):
+        if options.reference_audio_path is None and options.voice_id not in {
+            voice.voice_id for voice in self._voices
+        }:
             raise ValidationError("Giọng đọc không tồn tại trong engine đã chọn.")
 
         try:
@@ -198,7 +203,9 @@ class BaseVieNeuEngine(BaseTTSEngine):
                     raise ValidationError(
                         f"{self._info.display_name} không hỗ trợ Voice Cloning."
                     )
-                reference_path = Path(options.reference_audio_path).expanduser().resolve()
+                reference_path = (
+                    Path(options.reference_audio_path).expanduser().resolve()
+                )
                 if not reference_path.is_file():
                     raise ValidationError("Không tìm thấy tệp âm thanh tham chiếu.")
                 audio = runtime.infer(
@@ -220,7 +227,11 @@ class BaseVieNeuEngine(BaseTTSEngine):
         if requested not in {"auto", "cpu", "cuda"}:
             raise EngineLoadError(f"Thiết bị '{requested}' không được hỗ trợ.")
         if requested == "auto":
-            return "cuda" if self._capabilities.gpu_supported and _cuda_available() else "cpu"
+            return (
+                "cuda"
+                if self._capabilities.gpu_supported and _cuda_available()
+                else "cpu"
+            )
         if requested == "cuda" and not self._capabilities.gpu_supported:
             raise EngineLoadError(f"{self._info.display_name} không hỗ trợ CUDA.")
         if requested == "cpu" and not self._capabilities.cpu_supported:
@@ -384,7 +395,9 @@ class VieNeuV3Engine(BaseTTSEngine):
             try:
                 runtime.close()
             except Exception as exc:
-                raise EngineLoadError("Không thể giải phóng VieNeu-TTS v3-Turbo.") from exc
+                raise EngineLoadError(
+                    "Không thể giải phóng VieNeu-TTS v3-Turbo."
+                ) from exc
 
     def is_loaded(self) -> bool:
         return self._runtime is not None
@@ -406,13 +419,35 @@ class VieNeuV3Engine(BaseTTSEngine):
             raise ValidationError("Văn bản không được để trống.")
         if (
             options.reference_audio_path is None
+            and options.voice_artifact_path is None
             and options.voice_id not in {voice.voice_id for voice in self._voices}
         ):
             raise ValidationError("Giọng đọc không tồn tại trong engine đã chọn.")
 
         try:
-            if options.reference_audio_path is not None:
-                reference_path = Path(options.reference_audio_path).expanduser().resolve()
+            if options.voice_artifact_path is not None:
+                artifact_path = Path(options.voice_artifact_path).expanduser().resolve()
+                if not artifact_path.is_file():
+                    raise ValidationError("Không tìm thấy đặc điểm giọng đã lưu.")
+                try:
+                    with np.load(artifact_path, allow_pickle=False) as artifact:
+                        speaker_emb = np.asarray(
+                            artifact["speaker_emb"], dtype=np.float32
+                        )
+                        ref_codes = np.asarray(artifact["ref_codes"], dtype=np.int64)
+                except (OSError, ValueError, KeyError) as exc:
+                    raise ValidationError(
+                        "Dữ liệu đặc điểm giọng không hợp lệ."
+                    ) from exc
+                audio = runtime.infer(
+                    text=text.strip(),
+                    voice={"speaker_emb": speaker_emb, "codes": ref_codes},
+                    style=options.style_id,
+                )
+            elif options.reference_audio_path is not None:
+                reference_path = (
+                    Path(options.reference_audio_path).expanduser().resolve()
+                )
                 if not reference_path.is_file():
                     raise ValidationError("Không tìm thấy tệp âm thanh tham chiếu.")
                 with warnings.catch_warnings():
@@ -439,8 +474,46 @@ class VieNeuV3Engine(BaseTTSEngine):
         except ValidationError:
             raise
         except Exception as exc:
-            raise SynthesisError("VieNeu-TTS v3-Turbo không thể tổng hợp giọng nói.") from exc
+            raise SynthesisError(
+                "VieNeu-TTS v3-Turbo không thể tổng hợp giọng nói."
+            ) from exc
         return SynthesisResult(to_mono_float32(audio), self._sample_rate)
+
+    def encode_voice_reference(
+        self, reference_audio_path: str
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Run VieNeu enrollment once and return serializable voice features."""
+
+        runtime = self._runtime
+        if runtime is None:
+            raise EngineNotLoadedError("VieNeu-TTS v3-Turbo chưa được load.")
+        reference_path = Path(reference_audio_path).expanduser().resolve()
+        if not reference_path.is_file():
+            raise ValidationError("Không tìm thấy tệp âm thanh tham chiếu.")
+        try:
+            with warnings.catch_warnings():
+                warnings.filterwarnings(
+                    "ignore",
+                    message=(
+                        r"In 2\.9, this function's implementation will be changed "
+                        r"to use torchaudio\.load_with_torchcodec.*"
+                    ),
+                    category=UserWarning,
+                )
+                speaker_emb, ref_codes = runtime.encode_reference(
+                    str(reference_path), denoise=True
+                )
+            speaker = np.asarray(speaker_emb, dtype=np.float32).reshape(-1)
+            codes = np.asarray(ref_codes, dtype=np.int64)
+            if speaker.size == 0 or codes.size == 0:
+                raise ValueError("empty voice features")
+            return np.ascontiguousarray(speaker), np.ascontiguousarray(codes)
+        except ValidationError:
+            raise
+        except Exception as exc:
+            raise SynthesisError(
+                "Không thể trích xuất đặc điểm giọng bằng VieNeu v3."
+            ) from exc
 
     def _resolve_device(self, requested: str) -> str:
         if requested not in {"auto", "cpu", "cuda"}:

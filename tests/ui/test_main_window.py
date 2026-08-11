@@ -14,6 +14,7 @@ from vntts.engines.factory import EngineFactory, EngineRegistry
 from vntts.config.settings import Settings
 from vntts.db.models import AudioEffects
 from vntts.services.synthesis import SynthesizeSpeech
+from vntts.services.voice_profiles import VoiceProfileStore
 from vntts.ui.compose_view import MainViewModel
 from vntts.ui.main_window import MainWindow
 from tests.stubs import StubTTSEngine
@@ -30,13 +31,29 @@ def _window(qtbot, settings: Settings) -> tuple[MainWindow, MainViewModel]:  # t
         EngineFactory(registry),
         registry,
     )
+    voice_store = VoiceProfileStore(settings.paths.data_dir)
+
+    class FakeEnrollmentService:
+        def enroll(self, name: str, _source: str):  # type: ignore[no-untyped-def]
+            return voice_store.create(
+                name,
+                np.array([0.1, -0.2], dtype=np.float32),
+                np.array([[1, 2, 3]], dtype=np.int64),
+                ("Mẫu giọng dài hơn 8 giây; VieNeu chỉ sử dụng 8 giây đầu.",),
+            )
+
     view_model = MainViewModel(
         registry,
         use_case,
         settings,
         thread_pool=QThreadPool(),
+        voice_enrollment_service=FakeEnrollmentService(),  # type: ignore[arg-type]
     )
-    window = MainWindow(view_model, settings)
+    window = MainWindow(
+        view_model,
+        settings,
+        voice_profile_store=voice_store,
+    )
     qtbot.addWidget(window)
     window.show()
     qtbot.waitUntil(lambda: view_model.state == "idle", timeout=3_000)
@@ -86,25 +103,28 @@ def test_sidebar_opens_voice_clone_page_and_creates_profile(
 
     assert window.page_stack.currentIndex() == 1
     assert window.nav_clone_button.isChecked()
+    qtbot.waitUntil(
+        lambda: window.voice_clone_page.profile_list.count() == 1,
+        timeout=3_000,
+    )
     assert window.voice_clone_page.profile_list.count() == 1
     assert "Giọng của tôi" in window.voice_clone_page.profile_list.item(0).text()
     assert "Sẵn sàng" in window.voice_clone_page.profile_list.item(0).text()
     assert "8 giây" in window.voice_clone_page.processing_label.text()
     assert window.voice_clone_page.profile_list.currentItem() is not None
     assert window.voice_clone_page.preview_button.isEnabled()
-    played_sources: list[str] = []
+    synthesis_calls: list[tuple[tuple, dict]] = []
     monkeypatch.setattr(
-        window.voice_clone_page._preview_player,
-        "play",
-        lambda: played_sources.append(
-            window.voice_clone_page._preview_player.source().toLocalFile()
-        ),
+        view_model,
+        "synthesize",
+        lambda *args, **kwargs: synthesis_calls.append((args, kwargs)),
     )
 
     window.voice_clone_page.preview_button.click()
 
-    assert len(played_sources) == 1
-    assert played_sources[0].endswith(".wav")
+    assert len(synthesis_calls) == 1
+    assert synthesis_calls[0][1]["voice_artifact_path"].endswith(".npz")
+    assert synthesis_calls[0][1]["engine_id_override"] == "vieneu-v3"
 
     view_model._selected_engine_id = "vieneu-v3"
     view_model._selected_capabilities = SimpleNamespace(voice_cloning=True)
@@ -115,15 +135,14 @@ def test_sidebar_opens_voice_clone_page_and_creates_profile(
         if str(window.voice_selector.voice_combo.itemData(index)).startswith("clone:")
     )
     window.voice_selector.voice_combo.setCurrentIndex(cloned_index)
-    assert window.voice_selector.current_reference_audio_path() is not None
-    synthesis_args: list[tuple] = []
-    monkeypatch.setattr(view_model, "synthesize", lambda *args: synthesis_args.append(args))
+    assert window.voice_selector.current_voice_artifact_path() is not None
+    synthesis_calls.clear()
     window.text_input.editor.setPlainText("Xin chào bằng giọng đã nhân bản.")
 
     window._request_synthesis()
 
-    assert synthesis_args
-    assert synthesis_args[0][4].endswith(".wav")
+    assert synthesis_calls
+    assert synthesis_calls[0][1]["voice_artifact_path"].endswith(".npz")
 
 
 def test_synthesize_button_disabled_for_blank_text(qtbot, settings: Settings) -> None:  # type: ignore[no-untyped-def]

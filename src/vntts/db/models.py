@@ -56,6 +56,7 @@ class EngineSynthesisOptions:
     voice_id: str
     reference_audio_path: str | None = None
     style_id: str = "tu_nhien"
+    voice_artifact_path: str | None = None
 
     def __post_init__(self) -> None:
         if not self.voice_id.strip():

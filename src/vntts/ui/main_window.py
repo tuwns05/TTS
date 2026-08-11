@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
 
 from vntts.config.settings import Settings
 from vntts.config.theme import THEME, build_stylesheet, get_system_font
-from vntts.db.models import SynthesisResult, VIENEU_V3_ENGINE_ID, VoiceInfo
+from vntts.db.models import AudioEffects, SynthesisResult, VIENEU_V3_ENGINE_ID, VoiceInfo
 from vntts.services.document_import import ImportedDocument
 from vntts.services.playback import PlaybackService
 from vntts.services.voice_profiles import VoiceProfileStore
@@ -52,7 +52,10 @@ class MainWindow(QMainWindow):
             settings.paths.data_dir
         )
         self._engine_voices: list[VoiceInfo] = []
-        self._cloned_voice_paths: dict[str, str] = {}
+        self._cloned_voice_artifacts: dict[str, str] = {}
+        self._clone_enrollment_pending = False
+        self._clone_preview_pending = False
+        self._clone_preview_active = False
         self.setObjectName("AppRoot")
         self.setWindowTitle(settings.application.name)
         self.resize(1180, 760)
@@ -324,6 +327,9 @@ class MainWindow(QMainWindow):
         self.nav_compose_button.clicked.connect(lambda: self._show_page(0))
         self.nav_clone_button.clicked.connect(lambda: self._show_page(1))
         self.voice_clone_page.profiles_changed.connect(self._profiles_changed)
+        self.voice_clone_page.enrollment_requested.connect(self._enroll_voice)
+        self.voice_clone_page.preview_requested.connect(self._preview_cloned_voice)
+        self.voice_clone_page.stop_preview_requested.connect(self._playback.stop)
         self.text_input.text_changed.connect(lambda _text: self._refresh_actions())
         self.text_input.open_file_requested.connect(self._choose_document)
         self.engine_selector.engine_changed.connect(self._view_model.select_engine)
@@ -335,6 +341,7 @@ class MainWindow(QMainWindow):
         self._view_model.error_occurred.connect(self._show_error)
         self._view_model.synthesis_completed.connect(self._synthesis_completed)
         self._view_model.document_imported.connect(self._document_imported)
+        self._view_model.voice_profile_created.connect(self._voice_profile_created)
         self.playback_controls.play_requested.connect(self._play)
         self.playback_controls.pause_requested.connect(self._playback.pause)
         self.playback_controls.stop_requested.connect(self._playback.stop)
@@ -352,15 +359,45 @@ class MainWindow(QMainWindow):
         self._playback.clear()
         self.waveform.clear()
         voice_id = self.voice_selector.current_voice_id()
-        reference_audio_path = self.voice_selector.current_reference_audio_path()
-        if reference_audio_path is None and voice_id is not None:
-            reference_audio_path = self._cloned_voice_paths.get(voice_id)
+        voice_artifact_path = self.voice_selector.current_voice_artifact_path()
+        if voice_artifact_path is None and voice_id is not None:
+            voice_artifact_path = self._cloned_voice_artifacts.get(voice_id)
         self._view_model.synthesize(
             self.text_input.text(),
             self.voice_style.effects(),
             voice_id,
             self.voice_style.current_style_id(),
-            reference_audio_path,
+            voice_artifact_path=voice_artifact_path,
+        )
+
+    def _enroll_voice(self, name: str, source_audio_path: str) -> None:
+        self._clone_enrollment_pending = True
+        self._view_model.enroll_voice(name, source_audio_path)
+
+    def _voice_profile_created(self, profile: object) -> None:
+        self._clone_enrollment_pending = False
+        self.voice_clone_page.profile_created(profile)
+
+    def _preview_cloned_voice(self, profile: object) -> None:
+        artifact_path = str(getattr(profile, "voice_artifact_path", ""))
+        profile_id = str(getattr(profile, "profile_id", ""))
+        if not artifact_path or not profile_id:
+            self.voice_clone_page.enrollment_failed(
+                "Hồ sơ không có dữ liệu đặc điểm giọng hợp lệ."
+            )
+            return
+        self._playback.clear()
+        self.waveform.clear()
+        self._clone_preview_pending = True
+        self._clone_preview_active = False
+        self.voice_clone_page.set_preview_state("synthesizing")
+        self._view_model.synthesize(
+            "Xin chào, đây là bản nghe thử giọng nói đã nhân bản.",
+            AudioEffects(),
+            f"clone:{profile_id}",
+            "tu_nhien",
+            voice_artifact_path=artifact_path,
+            engine_id_override=VIENEU_V3_ENGINE_ID,
         )
 
     def _choose_document(self) -> None:
@@ -402,8 +439,8 @@ class MainWindow(QMainWindow):
         self.nav_clone_button.setChecked(index == 1)
 
     def _profiles_changed(self, profiles: list) -> None:
-        self._cloned_voice_paths = {
-            f"clone:{profile.profile_id}": profile.reference_audio_path
+        self._cloned_voice_artifacts = {
+            f"clone:{profile.profile_id}": profile.voice_artifact_path
             for profile in profiles
             if profile.status == "ready"
         }
@@ -421,10 +458,10 @@ class MainWindow(QMainWindow):
             }
             voices.extend(
                 VoiceInfo(voice_id, profiles_by_id[voice_id.removeprefix("clone:")].name, True)
-                for voice_id in self._cloned_voice_paths
+                for voice_id in self._cloned_voice_artifacts
                 if voice_id.removeprefix("clone:") in profiles_by_id
             )
-        self.voice_selector.set_voices(voices, self._cloned_voice_paths)
+        self.voice_selector.set_voices(voices, self._cloned_voice_artifacts)
 
     def _state_changed(self, state: str) -> None:
         messages = {
@@ -432,6 +469,7 @@ class MainWindow(QMainWindow):
             "loading_engine": "Đang tải engine...",
             "importing_document": "Đang đọc và trích xuất văn bản từ tệp...",
             "synthesizing": "Đang tạo giọng nói...",
+            "enrolling_voice": "Đang rút và lưu đặc điểm giọng...",
             "completed": "Tạo giọng nói hoàn tất.",
             "error": "Không thể hoàn thành tác vụ.",
             "cancelled": "Tác vụ đã được hủy.",
@@ -442,6 +480,7 @@ class MainWindow(QMainWindow):
             "loading_engine": "busy",
             "importing_document": "busy",
             "synthesizing": "busy",
+            "enrolling_voice": "busy",
             "completed": "success",
             "error": "error",
             "cancelled": "warning",
@@ -452,12 +491,18 @@ class MainWindow(QMainWindow):
             "loading_engine": ("Đang tải", "busy"),
             "importing_document": ("Đang nhập tệp", "busy"),
             "synthesizing": ("Đang xử lý", "busy"),
+            "enrolling_voice": ("Đang tạo giọng", "busy"),
             "completed": ("Sẵn sàng", "success"),
             "error": ("Có lỗi", "error"),
             "cancelled": ("Đã dừng", "neutral"),
         }
         self.engine_selector.set_status(*engine_status[state])
-        busy = state in {"loading_engine", "importing_document", "synthesizing"}
+        busy = state in {
+            "loading_engine",
+            "importing_document",
+            "synthesizing",
+            "enrolling_voice",
+        }
         self.cancel_button.setEnabled(busy)
         self.cancel_button.setVisible(busy)
         self.engine_selector.combo.setEnabled(not busy)
@@ -466,6 +511,13 @@ class MainWindow(QMainWindow):
         self._refresh_actions()
 
     def _show_error(self, message: str) -> None:
+        if self._clone_enrollment_pending:
+            self._clone_enrollment_pending = False
+            self.voice_clone_page.enrollment_failed(message)
+        if self._clone_preview_pending or self._clone_preview_active:
+            self._clone_preview_pending = False
+            self._clone_preview_active = False
+            self.voice_clone_page.enrollment_failed(f"Không thể nghe thử: {message}")
         self.status_label.setText(f"●  Lỗi: {message}")
         self._set_status_style("error")
         self._refresh_actions()
@@ -478,6 +530,14 @@ class MainWindow(QMainWindow):
             self._show_playback_error(str(exc))
             return
         self.waveform.set_result(result)
+        if self._clone_preview_pending:
+            self._clone_preview_pending = False
+            self._clone_preview_active = True
+            try:
+                self._playback.play()
+            except PlaybackError as exc:
+                self._show_playback_error(str(exc))
+                return
         self.status_label.setText(f"●  Hoàn tất · Audio {duration:.2f} giây")
         self._set_status_style("success")
         self._refresh_actions()
@@ -508,6 +568,10 @@ class MainWindow(QMainWindow):
 
     def _playback_state_changed(self, state: str) -> None:
         self.playback_controls.set_playback_state(state)
+        if self._clone_preview_active:
+            self.voice_clone_page.set_preview_state(state)
+            if state in {"stopped", "empty"}:
+                self._clone_preview_active = False
         messages = {
             "playing": "Đang phát audio...",
             "paused": "Đã tạm dừng audio.",
@@ -532,7 +596,12 @@ class MainWindow(QMainWindow):
             bool(self.text_input.text().strip())
             and self.voice_selector.current_voice_id() is not None
             and self._view_model.state
-            not in {"loading_engine", "importing_document", "synthesizing"}
+            not in {
+                "loading_engine",
+                "importing_document",
+                "synthesizing",
+                "enrolling_voice",
+            }
         )
         self.synthesize_button.setEnabled(ready)
         has_audio = self._playback.has_audio

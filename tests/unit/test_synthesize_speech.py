@@ -95,12 +95,19 @@ def test_clone_request_bypasses_preset_validation(tmp_path) -> None:
         CloneCapableStub.INFO,
         CloneCapableStub.CAPABILITIES,
     )
-    reference = tmp_path / "voice.wav"
-    reference.write_bytes(b"RIFF-sample")
+    artifact = tmp_path / "voice.npz"
+    np.savez_compressed(
+        artifact,
+        speaker_emb=np.array([0.1], dtype=np.float32),
+        ref_codes=np.array([[1]], dtype=np.int64),
+    )
     request = SynthesisRequest(
         text="Xin chào",
         engine_id="stub",
-        options=EngineSynthesisOptions("clone:profile", str(reference)),
+        options=EngineSynthesisOptions(
+            "clone:profile",
+            voice_artifact_path=str(artifact),
+        ),
         effects=AudioEffects(),
     )
 

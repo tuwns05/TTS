@@ -52,6 +52,11 @@ class BaseTTSEngine(ABC):
 
         return True
 
+    def encode_voice_reference(self, reference_audio_path: str) -> tuple[np.ndarray, np.ndarray]:
+        """Extract reusable voice features when the adapter supports enrollment."""
+
+        raise SynthesisError("Engine không hỗ trợ trích xuất đặc điểm giọng.")
+
     @abstractmethod
     def load(self, device: str) -> None:
         """Load engine resources for the requested device."""

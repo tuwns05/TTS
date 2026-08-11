@@ -33,6 +33,8 @@ from vntts.engines.base import EngineCapabilities
 from vntts.engines.factory import EngineRegistry
 from vntts.services.document_import import DocumentTextImporter, ImportedDocument
 from vntts.services.synthesis import SynthesizeSpeech
+from vntts.services.voice_enrollment import VoiceEnrollmentService
+from vntts.services.voice_profiles import VoiceProfile
 from vntts.utils.exceptions import AppError, ValidationError
 from vntts.utils.worker import TaskWorker
 
@@ -45,6 +47,7 @@ class MainViewModel(QObject):
     capabilities_changed = Signal(object)
     synthesis_completed = Signal(object)
     document_imported = Signal(object)
+    voice_profile_created = Signal(object)
     error_occurred = Signal(str)
 
     VALID_STATES = {
@@ -52,6 +55,7 @@ class MainViewModel(QObject):
         "loading_engine",
         "importing_document",
         "synthesizing",
+        "enrolling_voice",
         "completed",
         "error",
         "cancelled",
@@ -65,6 +69,7 @@ class MainViewModel(QObject):
         recommendation: EngineRecommendation | None = None,
         thread_pool: QThreadPool | None = None,
         document_importer: DocumentTextImporter | None = None,
+        voice_enrollment_service: VoiceEnrollmentService | None = None,
     ) -> None:
         super().__init__()
         self._registry = registry
@@ -73,6 +78,7 @@ class MainViewModel(QObject):
         self._recommendation = recommendation
         self._thread_pool = thread_pool or QThreadPool.globalInstance()
         self._document_importer = document_importer or DocumentTextImporter()
+        self._voice_enrollment_service = voice_enrollment_service
         self._active_workers: set[TaskWorker] = set()
         self._current_worker: TaskWorker | None = None
         self._state = "idle"
@@ -155,26 +161,34 @@ class MainViewModel(QObject):
         voice_id: str | None,
         style_id: str = "tu_nhien",
         reference_audio_path: str | None = None,
+        voice_artifact_path: str | None = None,
+        engine_id_override: str | None = None,
     ) -> None:
         """Build a request and execute synthesis outside the UI thread."""
 
         try:
-            if self._selected_engine_id is None:
+            engine_id = engine_id_override or self._selected_engine_id
+            if engine_id is None:
                 raise ValidationError("Vui lòng chọn engine.")
             if voice_id is None:
                 raise ValidationError("Vui lòng chọn giọng đọc.")
-            if voice_id.startswith("clone:") and not reference_audio_path:
+            if (
+                voice_id.startswith("clone:")
+                and not reference_audio_path
+                and not voice_artifact_path
+            ):
                 raise ValidationError(
-                    "Hồ sơ giọng nhân bản không còn file âm thanh mẫu. "
+                    "Hồ sơ giọng nhân bản không còn dữ liệu đặc điểm giọng. "
                     "Vui lòng tạo lại hồ sơ."
                 )
             request = SynthesisRequest(
                 text=text,
-                engine_id=self._selected_engine_id,
+                engine_id=engine_id,
                 options=EngineSynthesisOptions(
                     voice_id=voice_id,
                     reference_audio_path=reference_audio_path,
                     style_id=style_id,
+                    voice_artifact_path=voice_artifact_path,
                 ),
                 effects=effects,
             )
@@ -185,6 +199,31 @@ class MainViewModel(QObject):
         self._set_state("synthesizing")
         worker = TaskWorker(self._synthesize_speech.execute, request)
         worker.signals.result.connect(self._synthesis_ready)
+        worker.signals.error.connect(self._fail)
+        worker.signals.cancelled.connect(lambda: self._set_state("cancelled"))
+        self._start_worker(worker)
+
+    def enroll_voice(self, name: str, source_audio_path: str) -> None:
+        """Extract and persist a cloned voice outside the UI thread."""
+
+        if self._voice_enrollment_service is None:
+            self._fail("Chức năng tạo đặc điểm giọng chưa được cấu hình.")
+            return
+        if self._state in {
+            "loading_engine",
+            "importing_document",
+            "synthesizing",
+            "enrolling_voice",
+        }:
+            self.error_occurred.emit("Vui lòng chờ tác vụ hiện tại hoàn thành.")
+            return
+        self._set_state("enrolling_voice")
+        worker = TaskWorker(
+            self._voice_enrollment_service.enroll,
+            name,
+            source_audio_path,
+        )
+        worker.signals.result.connect(self._voice_profile_ready)
         worker.signals.error.connect(self._fail)
         worker.signals.cancelled.connect(lambda: self._set_state("cancelled"))
         self._start_worker(worker)
@@ -238,6 +277,10 @@ class MainViewModel(QObject):
     def _synthesis_ready(self, result: SynthesisResult) -> None:
         self._set_state("completed")
         self.synthesis_completed.emit(result)
+
+    def _voice_profile_ready(self, profile: VoiceProfile) -> None:
+        self._set_state("idle")
+        self.voice_profile_created.emit(profile)
 
     def _document_ready(self, document: ImportedDocument) -> None:
         self._set_state(self._state_before_document_import)

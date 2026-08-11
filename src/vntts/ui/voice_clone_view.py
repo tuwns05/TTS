@@ -6,11 +6,9 @@ from pathlib import Path
 
 from PySide6.QtCore import QStandardPaths, Qt, QUrl, Signal
 from PySide6.QtMultimedia import (
-    QAudioOutput,
     QAudioInput,
     QMediaCaptureSession,
     QMediaFormat,
-    QMediaPlayer,
     QMediaRecorder,
 )
 from PySide6.QtWidgets import (
@@ -36,6 +34,9 @@ class VoiceClonePage(QWidget):
     """Upload or record reference audio and manage reusable profiles."""
 
     profiles_changed = Signal(object)
+    enrollment_requested = Signal(str, str)
+    preview_requested = Signal(object)
+    stop_preview_requested = Signal()
 
     def __init__(self, store: VoiceProfileStore, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -43,11 +44,12 @@ class VoiceClonePage(QWidget):
         self._store = store
         self._selected_audio: Path | None = None
         self._recording_path: Path | None = None
+        self._enrolling = False
 
         title = QLabel("Nhân bản giọng", self)
         title.setObjectName("appTitle")
         description = QLabel(
-            "Tạo hồ sơ từ một mẫu giọng rõ ràng. VieNeu v3 sẽ dùng trực tiếp mẫu này khi tổng hợp.",
+            "Tạo hồ sơ từ một mẫu giọng rõ ràng. VieNeu v3 rút đặc điểm giọng một lần; app không lưu file âm thanh mẫu.",
             self,
         )
         description.setObjectName("appSubtitle")
@@ -97,8 +99,8 @@ class VoiceClonePage(QWidget):
         self.profile_list.setAccessibleName("Danh sách hồ sơ giọng")
         self.rename_button = QPushButton("Sửa tên", profiles_card)
         self.delete_button = QPushButton("Xóa", profiles_card)
-        self.preview_button = QPushButton("Nghe mẫu", profiles_card)
-        self.preview_button.setAccessibleName("Nghe file mẫu giọng đã xử lý")
+        self.preview_button = QPushButton("Nghe thử giọng clone", profiles_card)
+        self.preview_button.setAccessibleName("Tổng hợp câu nghe thử bằng giọng clone")
         self.stop_preview_button = QPushButton("Dừng nghe", profiles_card)
         self.rename_button.setEnabled(False)
         self.delete_button.setEnabled(False)
@@ -133,14 +135,6 @@ class VoiceClonePage(QWidget):
         self._recorder.setMediaFormat(media_format)
         self._capture_session.setAudioInput(self._audio_input)
         self._capture_session.setRecorder(self._recorder)
-        self._preview_audio_output = QAudioOutput(self)
-        self._preview_player = QMediaPlayer(self)
-        self._preview_player.setAudioOutput(self._preview_audio_output)
-        self._preview_player.playbackStateChanged.connect(
-            self._preview_state_changed
-        )
-        self._preview_player.errorOccurred.connect(self._preview_error)
-
         self.upload_button.clicked.connect(self._choose_audio)
         self.record_button.clicked.connect(self._toggle_recording)
         self.create_button.clicked.connect(self._create_profile)
@@ -148,7 +142,7 @@ class VoiceClonePage(QWidget):
         self.rename_button.clicked.connect(self._rename_profile)
         self.delete_button.clicked.connect(self._delete_profile)
         self.preview_button.clicked.connect(self._play_selected_profile)
-        self.stop_preview_button.clicked.connect(self._preview_player.stop)
+        self.stop_preview_button.clicked.connect(self.stop_preview_requested)
         self.name_input.textChanged.connect(self._refresh_create_button)
         self._reload_profiles()
 
@@ -161,7 +155,7 @@ class VoiceClonePage(QWidget):
 
         if self._recorder.recorderState() == QMediaRecorder.RecorderState.RecordingState:
             self._recorder.stop()
-        self._preview_player.stop()
+        self._discard_recording()
 
     def _choose_audio(self) -> None:
         source, _selected_filter = QFileDialog.getOpenFileName(
@@ -201,14 +195,20 @@ class VoiceClonePage(QWidget):
     def _create_profile(self) -> None:
         if self._selected_audio is None:
             return
-        self.processing_label.setText("●  Đang xử lý và lưu hồ sơ...")
+        self._enrolling = True
+        self.processing_label.setText("●  Đang để VieNeu rút đặc điểm giọng...")
         self._set_status("busy")
-        try:
-            profile = self._store.create(self.name_input.text(), self._selected_audio)
-        except AppError as exc:
-            self.processing_label.setText(f"●  Lỗi: {exc}")
-            self._set_status("error")
-            return
+        self._refresh_create_button()
+        self.enrollment_requested.emit(
+            self.name_input.text(),
+            str(self._selected_audio),
+        )
+
+    def profile_created(self, profile: VoiceProfile) -> None:
+        """Finish the enrollment UI after the worker persisted its features."""
+
+        self._enrolling = False
+        self._discard_recording()
         self.name_input.clear()
         self._selected_audio = None
         self.audio_label.setText("Chưa chọn mẫu giọng")
@@ -218,9 +218,18 @@ class VoiceClonePage(QWidget):
             )
             self._set_status("busy")
         else:
-            self.processing_label.setText("●  Hồ sơ đã xử lý · Sẵn sàng")
+            self.processing_label.setText("●  Đã lưu đặc điểm giọng · Sẵn sàng")
             self._set_status("success")
         self._reload_profiles(profile.profile_id)
+        self._refresh_create_button()
+
+    def enrollment_failed(self, message: str) -> None:
+        """Restore controls and present a concise enrollment error."""
+
+        self._enrolling = False
+        self.processing_label.setText(f"●  Lỗi: {message}")
+        self._set_status("error")
+        self._refresh_create_button()
 
     def _rename_profile(self) -> None:
         profile = self._current_profile()
@@ -245,11 +254,11 @@ class VoiceClonePage(QWidget):
         answer = QMessageBox.question(
             self,
             "Xóa hồ sơ giọng",
-            f"Xóa hồ sơ '{profile.name}' và file mẫu đã lưu?",
+            f"Xóa hồ sơ '{profile.name}' và đặc điểm giọng đã lưu?",
         )
         if answer != QMessageBox.StandardButton.Yes:
             return
-        self._preview_player.stop()
+        self.stop_preview_requested.emit()
         try:
             self._store.delete(profile.profile_id)
         except AppError as exc:
@@ -282,40 +291,55 @@ class VoiceClonePage(QWidget):
         self.delete_button.setEnabled(enabled)
         self.preview_button.setEnabled(enabled)
         if not enabled:
-            self._preview_player.stop()
+            self.stop_preview_requested.emit()
 
     def _play_selected_profile(self) -> None:
         profile = self._current_profile()
         if profile is None:
             return
-        source = Path(profile.reference_audio_path)
-        if not source.is_file():
-            self.processing_label.setText("●  Lỗi: Không tìm thấy file mẫu đã xử lý.")
-            self._set_status("error")
-            return
-        self._preview_player.setSource(QUrl.fromLocalFile(str(source)))
-        self._preview_player.play()
+        self.processing_label.setText("●  Đang tổng hợp câu nghe thử từ đặc điểm giọng...")
+        self._set_status("busy")
+        self.preview_button.setEnabled(False)
+        self.preview_requested.emit(profile)
 
-    def _preview_state_changed(self, state: QMediaPlayer.PlaybackState) -> None:
-        is_playing = state == QMediaPlayer.PlaybackState.PlayingState
-        self.preview_button.setText("Đang nghe..." if is_playing else "Nghe mẫu")
-        self.stop_preview_button.setEnabled(is_playing)
-        if is_playing:
-            self.processing_label.setText("●  Đang phát file mẫu đã xử lý")
-            self._set_status("busy")
+    def set_preview_state(self, state: str) -> None:
+        """Reflect synthesis/playback state for the cloned-voice preview."""
 
-    def _preview_error(self, _error: QMediaPlayer.Error, message: str) -> None:
-        self.processing_label.setText(
-            f"●  Lỗi nghe mẫu: {message or 'Thiết bị phát âm thanh không khả dụng.'}"
+        is_playing = state == "playing"
+        is_busy = state in {"synthesizing", "playing"}
+        self.preview_button.setText(
+            "Đang nghe..." if is_playing else "Nghe thử giọng clone"
         )
-        self._set_status("error")
+        self.preview_button.setEnabled(self._current_profile() is not None and not is_busy)
+        self.stop_preview_button.setEnabled(is_playing)
+        if state == "playing":
+            self.processing_label.setText("●  Đang phát câu nghe thử bằng giọng clone")
+            self._set_status("busy")
+        elif state == "stopped":
+            self.processing_label.setText("●  Đã dừng nghe thử")
+            self._set_status("neutral")
+        elif state == "ready":
+            self.processing_label.setText("●  Giọng clone sẵn sàng")
+            self._set_status("success")
 
     def _refresh_create_button(self) -> None:
         self.create_button.setEnabled(
-            bool(self.name_input.text().strip()) and self._selected_audio is not None
+            not self._enrolling
+            and bool(self.name_input.text().strip())
+            and self._selected_audio is not None
         )
 
     def _set_status(self, state: str) -> None:
         self.processing_label.setProperty("state", state)
         self.processing_label.style().unpolish(self.processing_label)
         self.processing_label.style().polish(self.processing_label)
+
+    def _discard_recording(self) -> None:
+        """Remove audio captured by the app once it is no longer needed."""
+
+        recording, self._recording_path = self._recording_path, None
+        if recording is not None:
+            try:
+                recording.unlink(missing_ok=True)
+            except OSError:
+                pass

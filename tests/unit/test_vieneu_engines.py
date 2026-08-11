@@ -30,6 +30,14 @@ class _VieNeuRuntime:
         text = str(kwargs["text"])
         return np.linspace(-0.2, 0.2, len(text) + 1, dtype=np.float64)
 
+    def encode_reference(
+        self, ref_audio: str, denoise: bool = True
+    ) -> tuple[np.ndarray, np.ndarray]:
+        return (
+            np.array([0.1, -0.2], dtype=np.float32),
+            np.array([[1, 2, 3]], dtype=np.int64),
+        )
+
     def close(self) -> None:
         self.closed = True
 
@@ -206,6 +214,74 @@ def test_vieneu_v3_only_passes_supported_arguments_to_runtime(tmp_path: Path) ->
         "voice": {"id": "bac_si_tuyen"},
         "style": "tu_nhien",
     }
+
+
+def test_vieneu_v3_uses_saved_features_without_reference_audio(tmp_path: Path) -> None:
+    model_path = tmp_path / "vieneu-v3"
+    model_path.mkdir()
+    tokenizer_path = model_path / "moss-tokenizer"
+    tokenizer_path.mkdir()
+    calls: list[dict[str, object]] = []
+
+    class Runtime(_VieNeuRuntime):
+        def infer(self, **kwargs: object) -> np.ndarray:
+            calls.append(kwargs)
+            return super().infer(**kwargs)
+
+    engine = VieNeuV3Engine(
+        model_path,
+        tokenizer_path=tokenizer_path,
+        sdk_factory=lambda **_: Runtime(),
+    )
+    engine.load("cpu")
+    artifact = tmp_path / "voice.npz"
+    speaker = np.array([0.1, 0.2], dtype=np.float32)
+    codes = np.array([[7, 8]], dtype=np.int64)
+    np.savez_compressed(artifact, speaker_emb=speaker, ref_codes=codes)
+
+    engine.synthesize(
+        "Xin chào",
+        EngineSynthesisOptions(
+            "clone:profile",
+            voice_artifact_path=str(artifact),
+        ),
+    )
+
+    assert "ref_audio" not in calls[-1]
+    voice = calls[-1]["voice"]
+    assert isinstance(voice, dict)
+    np.testing.assert_allclose(voice["speaker_emb"], speaker)
+    np.testing.assert_array_equal(voice["codes"], codes)
+
+
+def test_vieneu_v3_extracts_reusable_features_once(tmp_path: Path) -> None:
+    model_path = tmp_path / "vieneu-v3"
+    model_path.mkdir()
+    tokenizer_path = model_path / "moss-tokenizer"
+    tokenizer_path.mkdir()
+    calls: list[tuple[str, bool]] = []
+
+    class Runtime(_VieNeuRuntime):
+        def encode_reference(
+            self, ref_audio: str, denoise: bool = True
+        ) -> tuple[np.ndarray, np.ndarray]:
+            calls.append((ref_audio, denoise))
+            return super().encode_reference(ref_audio, denoise)
+
+    engine = VieNeuV3Engine(
+        model_path,
+        tokenizer_path=tokenizer_path,
+        sdk_factory=lambda **_: Runtime(),
+    )
+    engine.load("cpu")
+    reference = tmp_path / "temporary.wav"
+    reference.write_bytes(b"audio")
+
+    speaker, codes = engine.encode_voice_reference(str(reference))
+
+    assert calls == [(str(reference.resolve()), True)]
+    assert speaker.dtype == np.float32
+    assert codes.dtype == np.int64
 
 
 def test_vieneu_v3_passes_selected_speaking_style(tmp_path: Path) -> None:
