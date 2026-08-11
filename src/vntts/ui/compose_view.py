@@ -6,7 +6,6 @@ import numpy as np
 from PySide6.QtCore import QObject, QRectF, QSize, QThreadPool, Qt, Signal
 from PySide6.QtGui import QColor, QMouseEvent, QPaintEvent, QPainter, QPen
 from PySide6.QtWidgets import (
-    QComboBox,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -31,6 +30,7 @@ from vntts.db.models import (
 )
 from vntts.engines.base import EngineCapabilities
 from vntts.engines.factory import EngineRegistry
+from vntts.ui.controls import ChevronComboBox
 from vntts.services.document_import import DocumentTextImporter, ImportedDocument
 from vntts.services.synthesis import SynthesizeSpeech
 from vntts.services.voice_enrollment import VoiceEnrollmentService
@@ -307,10 +307,10 @@ class EngineSelector(QWidget):
         self.setObjectName("enginePanel")
         self.setProperty("card", True)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.combo = QComboBox(self)
+        self.combo = ChevronComboBox(self)
         self.combo.setObjectName("engineCombo")
         self.combo.setAccessibleName("Engine tổng hợp")
-        self.combo.setMinimumHeight(38)
+        self.combo.setMinimumHeight(THEME.row_height)
         self.combo.setSizePolicy(
             QSizePolicy.Policy.Ignored,
             QSizePolicy.Policy.Fixed,
@@ -333,8 +333,13 @@ class EngineSelector(QWidget):
         field_label.setObjectName("fieldLabel")
         field_label.hide()
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(6)
+        layout.setContentsMargins(
+            THEME.space_3,
+            THEME.space_2,
+            THEME.space_3,
+            THEME.space_3,
+        )
+        layout.setSpacing(THEME.space_1)
         layout.addLayout(title_row)
         layout.addWidget(self.combo)
         self.recommendation_label.hide()
@@ -396,7 +401,7 @@ class PlaybackControls(QWidget):
         super().__init__(parent)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(12)
+        layout.setSpacing(THEME.space_3)
         self.play_button = QPushButton(self)
         self.play_button.setObjectName("playButton")
         self.play_button.setProperty("variant", "primary")
@@ -574,7 +579,7 @@ class WaveformPreview(QWidget):
 
         timeline = QHBoxLayout()
         timeline.setContentsMargins(0, 0, 0, 0)
-        timeline.setSpacing(14)
+        timeline.setSpacing(THEME.space_3)
         timeline.addWidget(self.elapsed_label)
         timeline.addWidget(self.canvas, 1)
         timeline.addWidget(self.duration_label)
@@ -661,7 +666,7 @@ class TextInputWidget(QWidget):
         header.addWidget(self.character_count)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
+        layout.setSpacing(THEME.space_2)
         layout.addLayout(header)
         layout.addWidget(helper)
         layout.addWidget(self.editor)

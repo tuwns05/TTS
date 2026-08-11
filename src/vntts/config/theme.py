@@ -16,16 +16,23 @@ and consistency actually work.
 
 Works with PySide6 (default import below) and PyQt6 — see the two lines
 marked "PyQt6" if you need to switch bindings.
+
+GOTCHA — Qt mnemonics: a lone "&" inside any QGroupBox title, QPushButton
+text, or buddy-linked QLabel text is treated as a keyboard-shortcut marker
+and silently consumed at render time. `QGroupBox("Style & audio")` renders
+as "Style  audio" — no ampersand, a doubled space, and no visible bug in
+the source. Never put a bare "&" in title/button/label text; spell it out
+("Style and audio") or escape it as "&&" if the literal character is
+unavoidable.
 """
 
-from dataclasses import dataclass
 import platform
+from dataclasses import dataclass
 
 # --- Qt binding -------------------------------------------------------
 # Default: PySide6. To use PyQt6 instead, comment the PySide6 line and
 # uncomment the PyQt6 line — the rest of this file is binding-agnostic.
-from PySide6.QtGui import QFont          # PyQt6: from PyQt6.QtGui import QFont
-
+from PySide6.QtGui import QFont  # PyQt6: from PyQt6.QtGui import QFont
 
 # --- Design tokens ------------------------------------------------------
 
@@ -74,6 +81,13 @@ class Theme:
     sidebar_width: int = 200
     toolbar_height: int = 52
     row_height: int = 42          # comfortable row height (32px = compact)
+    combo_arrow_size: int = 8
+    combo_popup_row_height: int = 38
+    combo_max_visible_items: int = 8
+    control_stroke_width: float = 1.5
+    slider_track_height: int = 4
+    slider_handle_size: int = 14
+    slider_handle_border: int = 2
 
     # Motion (reference only — see SKILL.md "Motion" section for how
     # to actually animate hover/selection changes in Qt)
@@ -136,6 +150,9 @@ def build_stylesheet(t: Theme = THEME) -> str:
         font-size: {t.font_size_caption}px;
         color: {t.text_secondary};
     }}
+    QLabel#fieldLabel {{
+        font-weight: 500;
+    }}
 
     /* ---------- Sidebar ---------- */
     QFrame#sidebar {{
@@ -174,18 +191,56 @@ def build_stylesheet(t: Theme = THEME) -> str:
         border: 1px solid {t.border};
         border-radius: {t.radius_md}px;
     }}
+    QWidget[settingsSection="true"], QGroupBox[settingsSection="true"] {{
+        background: transparent;
+        border: none;
+        border-radius: 0;
+    }}
+    QGroupBox[settingsSection="true"] {{
+        margin-top: {t.space_3}px;
+    }}
+    QGroupBox[settingsSection="true"]::title {{
+        left: 0;
+        padding: 0 {t.space_1}px;
+    }}
+
+    /* QGroupBox itself carries NO font-weight — that used to cascade
+       down into every child (combo boxes, labels) and silently bold
+       content that should stay regular. Bold belongs on the title
+       chip only, via QGroupBox::title below. */
     QGroupBox {{
         background: {t.content_bg};
         border: 1px solid {t.border};
         border-radius: {t.radius_md}px;
         margin-top: {t.space_3}px;
-        font-weight: 600;
     }}
     QGroupBox::title {{
         subcontrol-origin: margin;
         left: {t.space_3}px;
         padding: 0 {t.space_1}px;
         color: {t.text_primary};
+        font-size: {t.font_size_section}px;
+        font-weight: 600;
+    }}
+    /* If a panel also has a hand-built card header (title QLabel +
+       badge in a QHBoxLayout, e.g. an "Engine" selector), give that
+       title QLabel role="section" so it resolves to the exact same
+       font-size/weight as QGroupBox::title above. Two different title
+       mechanisms rendering two different sizes is the #1 way a
+       stacked-card settings panel ends up looking inconsistent. */
+
+    /* ---------- Section dividers (inside a card) ---------- */
+    /* A thin 1px rule used to separate two logical groups of controls
+       WITHIN the same card, without spawning a second card. In Python:
+           divider = QFrame(self)
+           divider.setObjectName("sectionDivider")
+           divider.setFrameShape(QFrame.Shape.NoFrame)
+           divider.setFixedHeight(1)
+       Set the fixed height in Python, not just via QSS max-height —
+       relying on QSS alone here is inconsistent across styles. */
+    QFrame#sectionDivider {{
+        background: {t.border};
+        border: none;
     }}
 
     /* ---------- Buttons ---------- */
@@ -243,6 +298,48 @@ def build_stylesheet(t: Theme = THEME) -> str:
         padding: {t.space_2}px {t.space_3}px;
         selection-background-color: {t.accent_soft};
     }}
+    QComboBox {{
+        padding-right: {t.space_6}px;
+    }}
+    QComboBox:hover {{
+        background: rgba(0, 0, 0, 0.02);
+    }}
+    QComboBox:disabled {{
+        color: {t.text_disabled};
+        background: {t.panel_bg};
+    }}
+    QComboBox::drop-down {{
+        border: none;
+        width: {t.space_6}px;
+    }}
+    QComboBox::down-arrow {{
+        image: none;
+        width: 0;
+        height: 0;
+    }}
+    QComboBox QAbstractItemView {{
+        background: {t.overlay_bg};
+        border: 1px solid {t.border};
+        border-radius: {t.radius_sm}px;
+        outline: 0;
+        padding: {t.space_1}px;
+        show-decoration-selected: 1;
+        selection-background-color: {t.accent_soft};
+        selection-color: {t.accent_pressed};
+    }}
+    QComboBox QAbstractItemView::item {{
+        min-height: {t.combo_popup_row_height}px;
+        padding: 0 {t.space_2}px;
+        border: none;
+        border-radius: {t.radius_sm}px;
+    }}
+    QComboBox QAbstractItemView::item:hover {{
+        background: rgba(0, 0, 0, 0.04);
+    }}
+    QComboBox QAbstractItemView::item:selected {{
+        background: {t.accent_soft};
+        color: {t.accent_pressed};
+    }}
     QLineEdit:focus, QComboBox:focus, QTextEdit:focus, QPlainTextEdit:focus {{
         border: 1px solid {t.accent};
     }}
@@ -268,21 +365,25 @@ def build_stylesheet(t: Theme = THEME) -> str:
     }}
 
     QSlider::groove:horizontal {{
-        height: 4px;
-        border-radius: 2px;
+        height: {t.slider_track_height}px;
+        border-radius: {t.slider_track_height // 2}px;
         background: {t.border};
     }}
     QSlider::sub-page:horizontal {{
-        background: {t.accent};
-        border-radius: 2px;
+        background: {t.accent_pressed};
+        border-radius: {t.slider_track_height // 2}px;
     }}
     QSlider::handle:horizontal {{
-        width: 14px;
-        height: 14px;
-        margin: -5px 0;
-        border: 2px solid {t.accent};
-        border-radius: 8px;
+        width: {t.slider_handle_size}px;
+        height: {t.slider_handle_size}px;
+        margin: {(t.slider_track_height - t.slider_handle_size) // 2}px 0;
+        border: {t.slider_handle_border}px solid {t.accent_pressed};
+        border-radius: {t.slider_handle_size // 2}px;
         background: {t.content_bg};
+    }}
+    QSlider::handle:horizontal:hover, QSlider::handle:horizontal:pressed {{
+        border-color: {t.accent};
+        background: {t.accent_soft};
     }}
 
     /* ---------- Lists / rows ---------- */

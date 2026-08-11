@@ -4,13 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QStandardPaths, Qt, QUrl, Signal
-from PySide6.QtMultimedia import (
-    QAudioInput,
-    QMediaCaptureSession,
-    QMediaFormat,
-    QMediaRecorder,
-)
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QFileDialog,
     QFrame,
@@ -31,7 +25,7 @@ from vntts.utils.exceptions import AppError
 
 
 class VoiceClonePage(QWidget):
-    """Upload or record reference audio and manage reusable profiles."""
+    """Upload reference audio and manage reusable numerical voice profiles."""
 
     profiles_changed = Signal(object)
     enrollment_requested = Signal(str, str)
@@ -43,7 +37,6 @@ class VoiceClonePage(QWidget):
         self.setObjectName("voiceClonePage")
         self._store = store
         self._selected_audio: Path | None = None
-        self._recording_path: Path | None = None
         self._enrolling = False
 
         title = QLabel("Nhân bản giọng", self)
@@ -65,8 +58,14 @@ class VoiceClonePage(QWidget):
         self.audio_label.setObjectName("helperText")
         self.upload_button = QPushButton("Tải file mẫu", form)
         self.upload_button.setObjectName("uploadVoiceButton")
-        self.record_button = QPushButton("Bắt đầu ghi âm", form)
-        self.record_button.setObjectName("recordVoiceButton")
+        self.sample_note = QLabel(
+            "Gợi ý: Chọn file có 6–8 giây giọng nói rõ, chỉ một người nói, "
+            "phòng yên tĩnh; tránh nhạc nền, tiếng vọng và âm lượng quá lớn gây vỡ tiếng.",
+            form,
+        )
+        self.sample_note.setObjectName("voiceSampleNote")
+        self.sample_note.setProperty("role", "caption")
+        self.sample_note.setWordWrap(True)
         self.create_button = QPushButton("Tạo hồ sơ giọng", form)
         self.create_button.setObjectName("createVoiceProfileButton")
         self.create_button.setEnabled(False)
@@ -77,7 +76,6 @@ class VoiceClonePage(QWidget):
 
         source_actions = QHBoxLayout()
         source_actions.addWidget(self.upload_button)
-        source_actions.addWidget(self.record_button)
         source_actions.addStretch()
         form_layout = QVBoxLayout(form)
         form_layout.setContentsMargins(22, 22, 22, 22)
@@ -87,6 +85,7 @@ class VoiceClonePage(QWidget):
         form_layout.addWidget(QLabel("Mẫu giọng", form))
         form_layout.addLayout(source_actions)
         form_layout.addWidget(self.audio_label)
+        form_layout.addWidget(self.sample_note)
         form_layout.addWidget(self.processing_label)
         form_layout.addWidget(self.create_button)
 
@@ -127,16 +126,7 @@ class VoiceClonePage(QWidget):
         layout.addWidget(form)
         layout.addWidget(profiles_card, 1)
 
-        self._capture_session = QMediaCaptureSession(self)
-        self._audio_input = QAudioInput(self)
-        self._recorder = QMediaRecorder(self)
-        media_format = QMediaFormat()
-        media_format.setFileFormat(QMediaFormat.FileFormat.Wave)
-        self._recorder.setMediaFormat(media_format)
-        self._capture_session.setAudioInput(self._audio_input)
-        self._capture_session.setRecorder(self._recorder)
         self.upload_button.clicked.connect(self._choose_audio)
-        self.record_button.clicked.connect(self._toggle_recording)
         self.create_button.clicked.connect(self._create_profile)
         self.profile_list.currentItemChanged.connect(self._selection_changed)
         self.rename_button.clicked.connect(self._rename_profile)
@@ -150,13 +140,6 @@ class VoiceClonePage(QWidget):
     def profiles(self) -> list[VoiceProfile]:
         return self._store.list_profiles()
 
-    def shutdown(self) -> None:
-        """Stop an active recording before the application closes."""
-
-        if self._recorder.recorderState() == QMediaRecorder.RecorderState.RecordingState:
-            self._recorder.stop()
-        self._discard_recording()
-
     def _choose_audio(self) -> None:
         source, _selected_filter = QFileDialog.getOpenFileName(
             self,
@@ -166,24 +149,6 @@ class VoiceClonePage(QWidget):
         )
         if source:
             self._set_selected_audio(Path(source))
-
-    def _toggle_recording(self) -> None:
-        if self._recorder.recorderState() == QMediaRecorder.RecorderState.RecordingState:
-            self._recorder.stop()
-            self.record_button.setText("Bắt đầu ghi âm")
-            if self._recording_path is not None:
-                self._set_selected_audio(self._recording_path)
-            return
-        recordings = Path(
-            QStandardPaths.writableLocation(QStandardPaths.StandardLocation.TempLocation)
-        ) / "vntts-recordings"
-        recordings.mkdir(parents=True, exist_ok=True)
-        self._recording_path = recordings / "voice-sample.wav"
-        self._recorder.setOutputLocation(QUrl.fromLocalFile(str(self._recording_path)))
-        self._recorder.record()
-        self.record_button.setText("Dừng ghi âm")
-        self.processing_label.setText("●  Đang ghi âm mẫu giọng...")
-        self._set_status("busy")
 
     def _set_selected_audio(self, source: Path) -> None:
         self._selected_audio = source
@@ -208,7 +173,6 @@ class VoiceClonePage(QWidget):
         """Finish the enrollment UI after the worker persisted its features."""
 
         self._enrolling = False
-        self._discard_recording()
         self.name_input.clear()
         self._selected_audio = None
         self.audio_label.setText("Chưa chọn mẫu giọng")
@@ -230,6 +194,13 @@ class VoiceClonePage(QWidget):
         self.processing_label.setText(f"●  Lỗi: {message}")
         self._set_status("error")
         self._refresh_create_button()
+
+    def preview_failed(self, message: str) -> None:
+        """Present an error from the cloned-voice preview player."""
+
+        self.set_preview_state("stopped")
+        self.processing_label.setText(f"●  Lỗi nghe thử: {message}")
+        self._set_status("error")
 
     def _rename_profile(self) -> None:
         profile = self._current_profile()
@@ -333,13 +304,3 @@ class VoiceClonePage(QWidget):
         self.processing_label.setProperty("state", state)
         self.processing_label.style().unpolish(self.processing_label)
         self.processing_label.style().polish(self.processing_label)
-
-    def _discard_recording(self) -> None:
-        """Remove audio captured by the app once it is no longer needed."""
-
-        recording, self._recording_path = self._recording_path, None
-        if recording is not None:
-            try:
-                recording.unlink(missing_ok=True)
-            except OSError:
-                pass

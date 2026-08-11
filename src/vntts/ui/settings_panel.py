@@ -6,7 +6,6 @@ from collections.abc import Callable
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QComboBox,
     QFrame,
     QGridLayout,
     QGroupBox,
@@ -18,7 +17,9 @@ from PySide6.QtWidgets import (
 )
 
 from vntts.config.settings import AudioSettings
+from vntts.config.theme import THEME
 from vntts.db.models import AudioEffects, SPEECH_STYLE_NAMES, VoiceInfo
+from vntts.ui.controls import ChevronComboBox
 
 
 class VoiceSelectorWidget(QGroupBox):
@@ -35,19 +36,24 @@ class VoiceSelectorWidget(QGroupBox):
         voice_label = QLabel("Giọng đọc", self)
         voice_label.setObjectName("fieldLabel")
         voice_label.hide()
-        self.voice_combo = QComboBox(self)
+        self.voice_combo = ChevronComboBox(self)
         self.voice_combo.setObjectName("voiceCombo")
         self.voice_combo.setAccessibleName("Giọng đọc")
         self.voice_combo.setEnabled(False)
-        self.voice_combo.setMinimumHeight(38)
+        self.voice_combo.setMinimumHeight(THEME.row_height)
         self.voice_combo.setSizePolicy(
             QSizePolicy.Policy.Ignored,
             QSizePolicy.Policy.Fixed,
         )
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 16, 12, 12)
-        layout.setSpacing(8)
+        layout.setContentsMargins(
+            THEME.space_3,
+            THEME.space_4,
+            THEME.space_3,
+            THEME.space_3,
+        )
+        layout.setSpacing(THEME.space_2)
         layout.addWidget(self.voice_combo)
 
     def set_voices(
@@ -86,7 +92,7 @@ class VoiceStyleWidget(QGroupBox):
     """Select speaking style and collect independent audio adjustments."""
 
     def __init__(self, defaults: AudioSettings, parent: QWidget | None = None) -> None:
-        super().__init__("Phong cách & âm thanh", parent)
+        super().__init__("Phong cách giọng nói", parent)
         self.setObjectName("voiceStyleCard")
 
         helper = QLabel("Chọn cách thể hiện mà không thay đổi giọng đã chọn.", self)
@@ -96,10 +102,12 @@ class VoiceStyleWidget(QGroupBox):
 
         style_label = QLabel("Phong cách đọc", self)
         style_label.setObjectName("fieldLabel")
-        self.style_combo = QComboBox(self)
+        style_label.setProperty("role", "secondary")
+        style_label.setFixedWidth(THEME.space_6 * 3)
+        self.style_combo = ChevronComboBox(self)
         self.style_combo.setObjectName("styleCombo")
         self.style_combo.setAccessibleName("Phong cách đọc")
-        self.style_combo.setMinimumHeight(38)
+        self.style_combo.setMinimumHeight(THEME.row_height)
         self.style_combo.setSizePolicy(
             QSizePolicy.Policy.Ignored,
             QSizePolicy.Policy.Fixed,
@@ -108,6 +116,7 @@ class VoiceStyleWidget(QGroupBox):
 
         adjustments_label = QLabel("Tinh chỉnh âm thanh", self)
         adjustments_label.setObjectName("fieldLabel")
+        adjustments_label.setProperty("role", "secondary")
         adjustments_label.hide()
 
         self.speed_slider, self.speed_value = self._slider(
@@ -136,18 +145,40 @@ class VoiceStyleWidget(QGroupBox):
         self.volume_slider.setObjectName("volumeSlider")
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 16, 12, 12)
-        layout.setSpacing(6)
+        layout.setContentsMargins(
+            THEME.space_3,
+            THEME.space_4,
+            THEME.space_3,
+            THEME.space_3,
+        )
+        layout.setSpacing(THEME.space_2)
         style_row = QGridLayout()
         style_row.setContentsMargins(0, 0, 0, 0)
-        style_row.setHorizontalSpacing(8)
+        style_row.setHorizontalSpacing(THEME.space_2)
         style_row.addWidget(style_label, 0, 0)
         style_row.addWidget(self.style_combo, 0, 1)
         style_row.setColumnStretch(1, 1)
         layout.addLayout(style_row)
-        layout.addLayout(self._slider_row("Tốc độ", self.speed_slider, self.speed_value))
-        layout.addLayout(self._slider_row("Cao độ", self.pitch_slider, self.pitch_value))
-        layout.addLayout(self._slider_row("Âm lượng", self.volume_slider, self.volume_value))
+        self.adjustments_divider = QFrame(self)
+        self.adjustments_divider.setObjectName("sectionDivider")
+        self.adjustments_divider.setFrameShape(QFrame.Shape.NoFrame)
+        self.adjustments_divider.setFixedHeight(1)
+        layout.addWidget(self.adjustments_divider)
+        sliders = QGridLayout()
+        sliders.setContentsMargins(0, 0, 0, 0)
+        sliders.setHorizontalSpacing(THEME.space_2)
+        sliders.setVerticalSpacing(THEME.space_1)
+        self._add_slider_row(sliders, 0, "Tốc độ", self.speed_slider, self.speed_value)
+        self._add_slider_row(sliders, 1, "Cao độ", self.pitch_slider, self.pitch_value)
+        self._add_slider_row(
+            sliders,
+            2,
+            "Âm lượng",
+            self.volume_slider,
+            self.volume_value,
+        )
+        sliders.setColumnStretch(1, 1)
+        layout.addLayout(sliders)
 
     def set_supported_styles(self, style_ids: tuple[str, ...]) -> None:
         """Show only styles implemented by the selected engine."""
@@ -177,12 +208,6 @@ class VoiceStyleWidget(QGroupBox):
         value = self.style_combo.currentData()
         return str(value) if value is not None else "tu_nhien"
 
-    def _divider(self) -> QFrame:
-        divider = QFrame(self)
-        divider.setObjectName("sectionDivider")
-        divider.setFrameShape(QFrame.Shape.NoFrame)
-        return divider
-
     def _slider(
         self,
         name: str,
@@ -196,33 +221,31 @@ class VoiceStyleWidget(QGroupBox):
         slider.setAccessibleName(name)
         slider.setRange(minimum, maximum)
         slider.setValue(value)
-        slider.setMinimumHeight(30)
+        slider.setMinimumHeight(THEME.space_4 + THEME.space_1)
         value_label = QLabel(formatter(value), self)
         value_label.setObjectName("metricValue")
-        value_label.setMinimumWidth(56)
+        value_label.setFixedWidth(THEME.space_6 + THEME.space_4)
         value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         slider.valueChanged.connect(
             lambda current, label=value_label: label.setText(formatter(current))
         )
         return slider, value_label
 
-    def _slider_row(
+    def _add_slider_row(
         self,
+        layout: QGridLayout,
+        row: int,
         label: str,
         slider: QSlider,
         value_label: QLabel,
-    ) -> QGridLayout:
-        layout = QGridLayout()
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setHorizontalSpacing(8)
-        layout.setVerticalSpacing(0)
+    ) -> None:
         title = QLabel(label, self)
         title.setObjectName("fieldLabel")
-        layout.addWidget(title, 0, 0)
-        layout.addWidget(slider, 0, 1)
-        layout.addWidget(value_label, 0, 2)
-        layout.setColumnStretch(1, 1)
-        return layout
+        title.setProperty("role", "secondary")
+        title.setFixedWidth(THEME.space_6 * 2)
+        layout.addWidget(title, row, 0)
+        layout.addWidget(slider, row, 1)
+        layout.addWidget(value_label, row, 2)
 
     def effects(self) -> AudioEffects:
         """Build validated controls for the synthesis request."""

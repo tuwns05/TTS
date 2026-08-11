@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 from vntts.config.settings import Settings
-from vntts.config.theme import THEME, build_stylesheet, get_system_font
+from vntts.config.theme import THEME, get_system_font
 from vntts.db.models import AudioEffects, SynthesisResult, VIENEU_V3_ENGINE_ID, VoiceInfo
 from vntts.services.document_import import ImportedDocument
 from vntts.services.playback import PlaybackService
@@ -48,6 +48,7 @@ class MainWindow(QMainWindow):
         self._view_model = view_model
         self._settings = settings
         self._playback = playback or PlaybackService(self)
+        self._clone_playback = PlaybackService(self)
         self._voice_profile_store = voice_profile_store or VoiceProfileStore(
             settings.paths.data_dir
         )
@@ -98,8 +99,8 @@ class MainWindow(QMainWindow):
         self.status_label.setWordWrap(False)
 
         actions = QHBoxLayout()
-        actions.setContentsMargins(0, 8, 0, 0)
-        actions.setSpacing(8)
+        actions.setContentsMargins(0, THEME.space_2, 0, 0)
+        actions.setSpacing(THEME.space_2)
         actions.addStretch()
         actions.addWidget(self.cancel_button)
         actions.addWidget(self.synthesize_button)
@@ -108,8 +109,13 @@ class MainWindow(QMainWindow):
         self._composer_card.setObjectName("composerCard")
         self._composer_card.setProperty("card", True)
         self._composer_layout = QVBoxLayout(self._composer_card)
-        self._composer_layout.setContentsMargins(16, 16, 16, 16)
-        self._composer_layout.setSpacing(12)
+        self._composer_layout.setContentsMargins(
+            THEME.space_4,
+            THEME.space_4,
+            THEME.space_4,
+            THEME.space_4,
+        )
+        self._composer_layout.setSpacing(THEME.space_3)
         self._composer_layout.addWidget(self.text_input)
         self._composer_layout.addLayout(actions)
 
@@ -117,7 +123,9 @@ class MainWindow(QMainWindow):
         self._settings_container.setObjectName("settingsContainer")
         self._settings_layout = QBoxLayout(QBoxLayout.Direction.TopToBottom)
         self._settings_layout.setContentsMargins(0, 0, 0, 0)
-        self._settings_layout.setSpacing(8)
+        # QGroupBox reserves THEME.space_3 above its border for the title,
+        # which also creates the visual gap shown between the stacked cards.
+        self._settings_layout.setSpacing(0)
         self._settings_layout.addWidget(self.engine_selector)
         self._settings_layout.addWidget(self.voice_selector)
         self._settings_layout.addWidget(self.voice_style)
@@ -126,7 +134,7 @@ class MainWindow(QMainWindow):
 
         self._workspace_layout = QBoxLayout(QBoxLayout.Direction.LeftToRight)
         self._workspace_layout.setContentsMargins(0, 0, 0, 0)
-        self._workspace_layout.setSpacing(12)
+        self._workspace_layout.setSpacing(THEME.space_3)
         self._workspace_layout.addWidget(self._composer_card, 2)
         self._workspace_layout.addWidget(self._settings_container, 1)
 
@@ -143,7 +151,7 @@ class MainWindow(QMainWindow):
             QBoxLayout.Direction.LeftToRight,
             self._toolbar,
         )
-        self._header_layout.setContentsMargins(16, 0, 16, 0)
+        self._header_layout.setContentsMargins(THEME.space_4, 0, THEME.space_4, 0)
         self._header_layout.addWidget(app_title)
         self._header_layout.addStretch()
         self._header_layout.addWidget(self._engine_badge)
@@ -163,12 +171,17 @@ class MainWindow(QMainWindow):
         self._player_header.addWidget(self.export_mp3_button)
         self._player_header.addWidget(self.status_label)
         self._player_layout = QVBoxLayout(self._player_card)
-        self._player_layout.setContentsMargins(16, 14, 16, 14)
-        self._player_layout.setSpacing(10)
+        self._player_layout.setContentsMargins(
+            THEME.space_4,
+            THEME.space_3,
+            THEME.space_4,
+            THEME.space_3,
+        )
+        self._player_layout.setSpacing(THEME.space_2)
         self._player_layout.addLayout(self._player_header)
         self._player_body = QBoxLayout(QBoxLayout.Direction.LeftToRight)
         self._player_body.setContentsMargins(0, 0, 0, 0)
-        self._player_body.setSpacing(12)
+        self._player_body.setSpacing(THEME.space_3)
         self._player_body.addWidget(self.playback_controls)
         self._player_body.addWidget(self.waveform, 1)
         self._player_layout.addLayout(self._player_body)
@@ -186,8 +199,13 @@ class MainWindow(QMainWindow):
         self._header_divider.setFrameShadow(QFrame.Shadow.Plain)
 
         self._root_layout = QVBoxLayout()
-        self._root_layout.setContentsMargins(16, 12, 16, 16)
-        self._root_layout.setSpacing(12)
+        self._root_layout.setContentsMargins(
+            THEME.space_4,
+            THEME.space_3,
+            THEME.space_4,
+            THEME.space_4,
+        )
+        self._root_layout.setSpacing(THEME.space_3)
         self._root_layout.addWidget(self._toolbar)
         self._root_layout.addLayout(self._workspace_layout, 1)
         self._root_layout.addWidget(self._player_card)
@@ -229,10 +247,15 @@ class MainWindow(QMainWindow):
             button.setProperty("nav", True)
         self.nav_compose_button.setChecked(True)
         sidebar_layout = QVBoxLayout(self._sidebar)
-        sidebar_layout.setContentsMargins(12, 20, 12, 16)
-        sidebar_layout.setSpacing(8)
+        sidebar_layout.setContentsMargins(
+            THEME.space_3,
+            THEME.space_5,
+            THEME.space_3,
+            THEME.space_4,
+        )
+        sidebar_layout.setSpacing(THEME.space_2)
         sidebar_layout.addWidget(brand)
-        sidebar_layout.addSpacing(20)
+        sidebar_layout.addSpacing(THEME.space_5)
         sidebar_layout.addWidget(self.nav_compose_button)
         sidebar_layout.addWidget(self.nav_clone_button)
         sidebar_layout.addStretch()
@@ -247,7 +270,6 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(shell)
 
         self._connect_signals()
-        self._load_style()
         self._apply_responsive_layout(self.width() - THEME.sidebar_width)
         self.engine_selector.set_engines(view_model.engine_infos, settings.tts.default_engine)
         self.engine_selector.set_recommendation(view_model.recommendation)
@@ -277,16 +299,32 @@ class MainWindow(QMainWindow):
             self._settings_layout.setDirection(QBoxLayout.Direction.TopToBottom)
             self._header_layout.setDirection(QBoxLayout.Direction.LeftToRight)
             self._player_header.setDirection(QBoxLayout.Direction.LeftToRight)
-            self._root_layout.setContentsMargins(16, 12, 16, 16)
-            self._composer_layout.setContentsMargins(16, 16, 16, 16)
-            self._player_layout.setContentsMargins(16, 14, 16, 14)
-            self._header_layout.setSpacing(12)
+            self._root_layout.setContentsMargins(
+                THEME.space_4,
+                THEME.space_3,
+                THEME.space_4,
+                THEME.space_4,
+            )
+            self._composer_layout.setContentsMargins(
+                THEME.space_4,
+                THEME.space_4,
+                THEME.space_4,
+                THEME.space_4,
+            )
+            self._player_layout.setContentsMargins(
+                THEME.space_4,
+                THEME.space_3,
+                THEME.space_4,
+                THEME.space_3,
+            )
+            self._header_layout.setSpacing(THEME.space_3)
             self._player_body.setDirection(QBoxLayout.Direction.LeftToRight)
             self._workspace_layout.setStretch(0, 2)
             self._workspace_layout.setStretch(1, 1)
             self._settings_layout.setStretch(0, 0)
             self._settings_layout.setStretch(1, 0)
             self._settings_layout.setStretch(2, 0)
+            self._settings_layout.setStretch(3, 1)
             self.text_input.editor.setMinimumHeight(180)
             self.waveform.setMinimumHeight(52)
             self.status_label.setMaximumWidth(360)
@@ -296,18 +334,34 @@ class MainWindow(QMainWindow):
         self._settings_container.setMaximumWidth(16_777_215)
         self._workspace_layout.setStretch(0, 0)
         self._workspace_layout.setStretch(1, 0)
-        self._root_layout.setContentsMargins(12, 10, 12, 12)
-        self._composer_layout.setContentsMargins(14, 14, 14, 14)
-        self._player_layout.setContentsMargins(14, 12, 14, 12)
-        self._header_layout.setSpacing(8)
+        self._root_layout.setContentsMargins(
+            THEME.space_3,
+            THEME.space_2,
+            THEME.space_3,
+            THEME.space_3,
+        )
+        self._composer_layout.setContentsMargins(
+            THEME.space_3,
+            THEME.space_3,
+            THEME.space_3,
+            THEME.space_3,
+        )
+        self._player_layout.setContentsMargins(
+            THEME.space_3,
+            THEME.space_3,
+            THEME.space_3,
+            THEME.space_3,
+        )
+        self._header_layout.setSpacing(THEME.space_2)
         self.text_input.editor.setMinimumHeight(170 if mode == "compact" else 160)
         self.waveform.setMinimumHeight(52)
 
         if mode == "compact":
-            self._settings_layout.setDirection(QBoxLayout.Direction.LeftToRight)
-            self._settings_layout.setStretch(0, 1)
-            self._settings_layout.setStretch(1, 1)
-            self._settings_layout.setStretch(2, 1)
+            self._settings_layout.setDirection(QBoxLayout.Direction.TopToBottom)
+            self._settings_layout.setStretch(0, 0)
+            self._settings_layout.setStretch(1, 0)
+            self._settings_layout.setStretch(2, 0)
+            self._settings_layout.setStretch(3, 1)
             self._header_layout.setDirection(QBoxLayout.Direction.LeftToRight)
             self._player_header.setDirection(QBoxLayout.Direction.LeftToRight)
             self._player_body.setDirection(QBoxLayout.Direction.LeftToRight)
@@ -318,6 +372,7 @@ class MainWindow(QMainWindow):
         self._settings_layout.setStretch(0, 0)
         self._settings_layout.setStretch(1, 0)
         self._settings_layout.setStretch(2, 0)
+        self._settings_layout.setStretch(3, 1)
         self._header_layout.setDirection(QBoxLayout.Direction.TopToBottom)
         self._player_header.setDirection(QBoxLayout.Direction.TopToBottom)
         self._player_body.setDirection(QBoxLayout.Direction.TopToBottom)
@@ -329,7 +384,7 @@ class MainWindow(QMainWindow):
         self.voice_clone_page.profiles_changed.connect(self._profiles_changed)
         self.voice_clone_page.enrollment_requested.connect(self._enroll_voice)
         self.voice_clone_page.preview_requested.connect(self._preview_cloned_voice)
-        self.voice_clone_page.stop_preview_requested.connect(self._playback.stop)
+        self.voice_clone_page.stop_preview_requested.connect(self._clone_playback.stop)
         self.text_input.text_changed.connect(lambda _text: self._refresh_actions())
         self.text_input.open_file_requested.connect(self._choose_document)
         self.engine_selector.engine_changed.connect(self._view_model.select_engine)
@@ -351,9 +406,8 @@ class MainWindow(QMainWindow):
         self._playback.state_changed.connect(self._playback_state_changed)
         self._playback.position_changed.connect(self.waveform.set_position)
         self._playback.error_occurred.connect(self._show_playback_error)
-
-    def _load_style(self) -> None:
-        self.setStyleSheet(build_stylesheet())
+        self._clone_playback.state_changed.connect(self._clone_playback_state_changed)
+        self._clone_playback.error_occurred.connect(self._show_clone_playback_error)
 
     def _request_synthesis(self) -> None:
         self._playback.clear()
@@ -386,8 +440,7 @@ class MainWindow(QMainWindow):
                 "Hồ sơ không có dữ liệu đặc điểm giọng hợp lệ."
             )
             return
-        self._playback.clear()
-        self.waveform.clear()
+        self._clone_playback.clear()
         self._clone_preview_pending = True
         self._clone_preview_active = False
         self.voice_clone_page.set_preview_state("synthesizing")
@@ -434,6 +487,14 @@ class MainWindow(QMainWindow):
         self._refresh_voice_choices()
 
     def _show_page(self, index: int) -> None:
+        if index == 0:
+            if self._clone_preview_pending:
+                self._clone_preview_pending = False
+                self._view_model.cancel_current_task()
+                self.voice_clone_page.set_preview_state("stopped")
+            self._clone_playback.stop()
+        else:
+            self._playback.stop()
         self.page_stack.setCurrentIndex(index)
         self.nav_compose_button.setChecked(index == 0)
         self.nav_clone_button.setChecked(index == 1)
@@ -517,12 +578,22 @@ class MainWindow(QMainWindow):
         if self._clone_preview_pending or self._clone_preview_active:
             self._clone_preview_pending = False
             self._clone_preview_active = False
-            self.voice_clone_page.enrollment_failed(f"Không thể nghe thử: {message}")
+            self.voice_clone_page.preview_failed(message)
         self.status_label.setText(f"●  Lỗi: {message}")
         self._set_status_style("error")
         self._refresh_actions()
 
     def _synthesis_completed(self, result: SynthesisResult) -> None:
+        if self._clone_preview_pending:
+            self._clone_preview_pending = False
+            self._clone_preview_active = True
+            try:
+                self._clone_playback.set_audio(result)
+                self._clone_playback.play()
+            except PlaybackError as exc:
+                self._show_clone_playback_error(str(exc))
+            return
+
         duration = result.audio.size / result.sample_rate
         try:
             self._playback.set_audio(result)
@@ -530,14 +601,6 @@ class MainWindow(QMainWindow):
             self._show_playback_error(str(exc))
             return
         self.waveform.set_result(result)
-        if self._clone_preview_pending:
-            self._clone_preview_pending = False
-            self._clone_preview_active = True
-            try:
-                self._playback.play()
-            except PlaybackError as exc:
-                self._show_playback_error(str(exc))
-                return
         self.status_label.setText(f"●  Hoàn tất · Audio {duration:.2f} giây")
         self._set_status_style("success")
         self._refresh_actions()
@@ -568,10 +631,6 @@ class MainWindow(QMainWindow):
 
     def _playback_state_changed(self, state: str) -> None:
         self.playback_controls.set_playback_state(state)
-        if self._clone_preview_active:
-            self.voice_clone_page.set_preview_state(state)
-            if state in {"stopped", "empty"}:
-                self._clone_preview_active = False
         messages = {
             "playing": "Đang phát audio...",
             "paused": "Đã tạm dừng audio.",
@@ -580,6 +639,18 @@ class MainWindow(QMainWindow):
         if state in messages:
             self.status_label.setText(f"●  {messages[state]}")
             self._set_status_style("busy" if state == "playing" else "neutral")
+
+    def _clone_playback_state_changed(self, state: str) -> None:
+        if not self._clone_preview_active:
+            return
+        self.voice_clone_page.set_preview_state(state)
+        if state in {"stopped", "empty"}:
+            self._clone_preview_active = False
+
+    def _show_clone_playback_error(self, message: str) -> None:
+        self._clone_preview_pending = False
+        self._clone_preview_active = False
+        self.voice_clone_page.preview_failed(message)
 
     def _show_playback_error(self, message: str) -> None:
         self.status_label.setText(f"●  Lỗi playback: {message}")
@@ -619,7 +690,7 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event: QCloseEvent) -> None:
         """Release worker and engine resources before closing."""
 
-        self.voice_clone_page.shutdown()
+        self._clone_playback.shutdown()
         self._playback.shutdown()
         self._view_model.shutdown()
         super().closeEvent(event)

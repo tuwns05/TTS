@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import importlib
 import io
-from pathlib import Path
 import wave
+from pathlib import Path
 
 import numpy as np
-from PySide6.QtCore import QBuffer, QByteArray, QIODevice, QObject, QUrl, Signal
-from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
+from PySide6.QtCore import QBuffer, QByteArray, QIODevice, QObject, QTimer, Signal
+from PySide6.QtMultimedia import QAudioFormat, QAudioSink, QMediaDevices, QtAudio
 
 from vntts.db.models import SynthesisResult
 from vntts.utils.exceptions import PlaybackError
@@ -28,23 +28,31 @@ class PlaybackService(QObject):
     PAUSED = "paused"
     STOPPED = "stopped"
 
+    AUDIO_DEVICE_ERROR = (
+        "Thiết bị phát âm thanh đã thay đổi hoặc không còn khả dụng. "
+        "Hãy kiểm tra đầu ra âm thanh trong Windows rồi nhấn Phát lại."
+    )
+
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._current_result: SynthesisResult | None = None
         self._wav_data: QByteArray | None = None
+        self._pcm_data: QByteArray | None = None
         self._buffer: QBuffer | None = None
         self._state = self.EMPTY
+        self._audio_error_reported = False
+        self._playback_requested = False
+        self._position_ms = 0
+        self._duration_ms = 0
+        self._sink_start_position_ms = 0
 
-        self._audio_output = QAudioOutput(self)
-        self._audio_output.setVolume(1.0)
-        self._player = QMediaPlayer(self)
-        self._player.setAudioOutput(self._audio_output)
-        self._player.positionChanged.connect(
-            lambda position: self.position_changed.emit(int(position))
-        )
-        self._player.playbackStateChanged.connect(self._on_player_state_changed)
-        self._player.mediaStatusChanged.connect(self._on_media_status_changed)
-        self._player.errorOccurred.connect(self._on_player_error)
+        self._media_devices = QMediaDevices(self)
+        self._media_devices.audioOutputsChanged.connect(self._on_audio_outputs_changed)
+        self._audio_sink: QAudioSink | None = None
+        self._sink_device_id: bytes | None = None
+        self._position_timer = QTimer(self)
+        self._position_timer.setInterval(50)
+        self._position_timer.timeout.connect(self._update_position)
 
     @property
     def state(self) -> str:
@@ -74,16 +82,20 @@ class PlaybackService(QObject):
         """Replace the current waveform and prepare an in-memory PCM WAV."""
 
         self.clear()
+        pcm_data = QByteArray(self._encode_pcm(result))
         wav_data = QByteArray(self._encode_wav(result))
         buffer = QBuffer(self)
-        buffer.setData(wav_data)
+        buffer.setData(pcm_data)
         if not buffer.open(QIODevice.OpenModeFlag.ReadOnly):
             buffer.deleteLater()
             raise PlaybackError("Không thể mở bộ đệm âm thanh để phát.")
         self._current_result = result
         self._wav_data = wav_data
+        self._pcm_data = pcm_data
         self._buffer = buffer
-        self._player.setSourceDevice(buffer, QUrl("memory:current-audio.wav"))
+        self._audio_error_reported = False
+        self._position_ms = 0
+        self._duration_ms = round(result.audio.size / result.sample_rate * 1_000)
         self._set_state(self.READY)
 
     def export_audio(self, destination: str | Path, audio_format: str) -> Path:
@@ -116,9 +128,19 @@ class PlaybackService(QObject):
 
         if not self.has_audio:
             raise PlaybackError("Chưa có audio để phát.")
-        if self._player.duration() > 0 and self._player.position() >= self._player.duration():
-            self._player.setPosition(0)
-        self._player.play()
+        self._playback_requested = True
+        self._audio_error_reported = False
+        if self._state == self.PAUSED and self._audio_sink is not None:
+            self._audio_sink.resume()
+            self._position_timer.start()
+        else:
+            if self._position_ms >= self._duration_ms:
+                self._set_position(0)
+            try:
+                self._start_audio_sink()
+            except PlaybackError:
+                self._playback_requested = False
+                raise
         self._set_state(self.PLAYING)
 
     def pause(self) -> None:
@@ -126,7 +148,10 @@ class PlaybackService(QObject):
 
         if self._state != self.PLAYING:
             return
-        self._player.pause()
+        if self._audio_sink is not None:
+            self._audio_sink.suspend()
+        self._position_timer.stop()
+        self._update_position()
         self._set_state(self.PAUSED)
 
     def stop(self) -> None:
@@ -134,7 +159,9 @@ class PlaybackService(QObject):
 
         if not self.has_audio:
             return
-        self._player.stop()
+        self._playback_requested = False
+        self._release_audio_sink()
+        self._set_position(0)
         self._set_state(self.STOPPED)
 
     def seek(self, position_ms: int) -> None:
@@ -142,18 +169,30 @@ class PlaybackService(QObject):
 
         if not self.has_audio:
             return
-        duration = self._player.duration()
-        upper_bound = duration if duration > 0 else max(0, int(position_ms))
-        self._player.setPosition(max(0, min(int(position_ms), upper_bound)))
+        target = max(0, min(int(position_ms), self._duration_ms))
+        was_playing = self._state == self.PLAYING
+        was_paused = self._state == self.PAUSED
+        if self._audio_sink is not None:
+            self._release_audio_sink()
+        self._set_position(target)
+        if was_playing or was_paused:
+            self._start_audio_sink()
+            if was_paused and self._audio_sink is not None:
+                self._audio_sink.suspend()
+                self._position_timer.stop()
 
     def clear(self) -> None:
         """Release the current waveform, media source and memory buffer."""
 
-        self._player.stop()
-        self._player.setSource(QUrl())
+        self._release_audio_sink()
         buffer, self._buffer = self._buffer, None
         self._current_result = None
         self._wav_data = None
+        self._pcm_data = None
+        self._audio_error_reported = False
+        self._playback_requested = False
+        self._position_ms = 0
+        self._duration_ms = 0
         if buffer is not None:
             buffer.close()
             buffer.deleteLater()
@@ -163,6 +202,15 @@ class PlaybackService(QObject):
         """Release all playback resources before application shutdown."""
 
         self.clear()
+
+    @staticmethod
+    def _encode_pcm(result: SynthesisResult) -> bytes:
+        audio = np.asarray(result.audio, dtype=np.float32)
+        if audio.ndim != 1 or audio.size == 0 or not bool(np.isfinite(audio).all()):
+            raise PlaybackError(
+                "Waveform kh\u00f4ng h\u1ee3p l\u1ec7 \u0111\u1ec3 ph\u00e1t."
+            )
+        return np.rint(np.clip(audio, -1.0, 1.0) * 32_767).astype("<i2").tobytes()
 
     @staticmethod
     def _encode_wav(result: SynthesisResult) -> bytes:
@@ -201,31 +249,105 @@ class PlaybackService(QObject):
         except Exception as exc:
             raise PlaybackError(f"Không thể mã hóa MP3: {exc}") from exc
 
-    def _on_player_state_changed(
-        self,
-        state: QMediaPlayer.PlaybackState,
-    ) -> None:
-        mapping = {
-            QMediaPlayer.PlaybackState.PlayingState: self.PLAYING,
-            QMediaPlayer.PlaybackState.PausedState: self.PAUSED,
-            QMediaPlayer.PlaybackState.StoppedState: self.STOPPED,
-        }
-        if self.has_audio:
-            self._set_state(mapping[state])
+    def _start_audio_sink(self) -> None:
+        if self._current_result is None or self._buffer is None:
+            raise PlaybackError("Chưa có audio để phát.")
+        device = QMediaDevices.defaultAudioOutput()
+        if device.isNull():
+            raise PlaybackError("Không tìm thấy thiết bị phát âm thanh trong Windows.")
 
-    def _on_media_status_changed(self, status: QMediaPlayer.MediaStatus) -> None:
-        if status == QMediaPlayer.MediaStatus.EndOfMedia and self.has_audio:
+        audio_format = QAudioFormat()
+        audio_format.setSampleRate(self._current_result.sample_rate)
+        audio_format.setChannelCount(1)
+        audio_format.setSampleFormat(QAudioFormat.SampleFormat.Int16)
+        if not device.isFormatSupported(audio_format):
+            raise PlaybackError(
+                "Thiết bị âm thanh hiện tại không hỗ trợ định dạng PCM của bản nghe thử."
+            )
+
+        self._release_audio_sink()
+        self._seek_buffer(self._position_ms)
+        sink = QAudioSink(device, audio_format, self)
+        self._audio_sink = sink
+        self._sink_device_id = bytes(device.id())
+        self._sink_start_position_ms = self._position_ms
+        sink.start(self._buffer)
+        if sink.error() not in {QtAudio.Error.NoError, QtAudio.Error.UnderrunError}:
+            self._playback_requested = False
+            self._release_audio_sink()
             self._set_state(self.STOPPED)
+            raise PlaybackError(self.AUDIO_DEVICE_ERROR)
+        self._position_timer.start()
 
-    def _on_player_error(
-        self,
-        _error: QMediaPlayer.Error,
-        message: str,
-    ) -> None:
-        if not message:
-            message = "Thiết bị phát âm thanh không khả dụng."
+    def _release_audio_sink(self) -> None:
+        self._position_timer.stop()
+        sink, self._audio_sink = self._audio_sink, None
+        self._sink_device_id = None
+        if sink is not None:
+            sink.stop()
+            sink.deleteLater()
+
+    def _seek_buffer(self, position_ms: int) -> None:
+        if self._buffer is None or self._current_result is None:
+            return
+        bytes_per_second = self._current_result.sample_rate * 2
+        byte_offset = position_ms * bytes_per_second // 1_000
+        byte_offset -= byte_offset % 2
+        self._buffer.seek(min(byte_offset, self._buffer.size()))
+
+    def _update_position(self) -> None:
+        sink = self._audio_sink
+        if sink is None:
+            return
+        state = sink.state()
+        if state == QtAudio.State.IdleState:
+            self._finish_playback()
+            return
+        if (
+            state == QtAudio.State.StoppedState
+            and sink.error() != QtAudio.Error.NoError
+        ):
+            self._handle_audio_sink_error()
+            return
+        elapsed_ms = max(0, sink.processedUSecs() // 1_000)
+        self._set_position(self._sink_start_position_ms + elapsed_ms)
+
+    def _set_position(self, position_ms: int) -> None:
+        position = max(0, min(int(position_ms), self._duration_ms))
+        if position == self._position_ms:
+            return
+        self._position_ms = position
+        self.position_changed.emit(position)
+
+    def _finish_playback(self) -> None:
+        self._set_position(self._duration_ms)
+        self._playback_requested = False
+        self._release_audio_sink()
+        self._set_state(self.STOPPED)
+
+    def _handle_audio_sink_error(self) -> None:
+        if self._audio_error_reported:
+            return
+        self._audio_error_reported = True
+        self._playback_requested = False
+        self._release_audio_sink()
         self._set_state(self.STOPPED if self.has_audio else self.EMPTY)
-        self.error_occurred.emit(message)
+        self.error_occurred.emit(self.AUDIO_DEVICE_ERROR)
+
+    def _on_audio_outputs_changed(self) -> None:
+        if self._audio_sink is None and not self._playback_requested:
+            return
+        available_device_ids = {
+            bytes(device.id()) for device in QMediaDevices.audioOutputs()
+        }
+        if self._sink_device_id in available_device_ids:
+            return
+        self._playback_requested = False
+        self._release_audio_sink()
+        self._set_state(self.STOPPED)
+        if not self._audio_error_reported:
+            self._audio_error_reported = True
+            self.error_occurred.emit(self.AUDIO_DEVICE_ERROR)
 
     def _set_state(self, state: str) -> None:
         if self._state == state:

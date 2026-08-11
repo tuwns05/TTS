@@ -8,19 +8,32 @@ import numpy as np
 import pytest
 import soundfile as sf
 from PySide6.QtCore import QThreadPool, QTimer
-from PySide6.QtWidgets import QBoxLayout, QFileDialog, QPushButton, QScrollArea
+from PySide6.QtWidgets import (
+    QApplication,
+    QBoxLayout,
+    QFileDialog,
+    QPushButton,
+    QScrollArea,
+    QStyle,
+)
 
-from vntts.engines.factory import EngineFactory, EngineRegistry
+from tests.stubs import StubTTSEngine
 from vntts.config.settings import Settings
-from vntts.db.models import AudioEffects
+from vntts.config.theme import build_stylesheet
+from vntts.db.models import AudioEffects, SynthesisResult
+from vntts.engines.factory import EngineFactory, EngineRegistry
 from vntts.services.synthesis import SynthesizeSpeech
 from vntts.services.voice_profiles import VoiceProfileStore
 from vntts.ui.compose_view import MainViewModel
+from vntts.ui.controls import ChevronComboBox
 from vntts.ui.main_window import MainWindow
-from tests.stubs import StubTTSEngine
 
 
 def _window(qtbot, settings: Settings) -> tuple[MainWindow, MainViewModel]:  # type: ignore[no-untyped-def]
+    application = QApplication.instance()
+    assert application is not None
+    application.setStyle("Fusion")
+    application.setStyleSheet(build_stylesheet())
     registry = EngineRegistry()
     registry.register(
         "stub",
@@ -103,6 +116,8 @@ def test_sidebar_opens_voice_clone_page_and_creates_profile(
 
     assert window.page_stack.currentIndex() == 1
     assert window.nav_clone_button.isChecked()
+    assert window.findChild(QPushButton, "recordVoiceButton") is None
+    assert "6–8 giây" in window.voice_clone_page.sample_note.text()
     qtbot.waitUntil(
         lambda: window.voice_clone_page.profile_list.count() == 1,
         timeout=3_000,
@@ -119,12 +134,22 @@ def test_sidebar_opens_voice_clone_page_and_creates_profile(
         "synthesize",
         lambda *args, **kwargs: synthesis_calls.append((args, kwargs)),
     )
+    compose_result = SynthesisResult(np.full(120, 0.1, dtype=np.float32), 24_000)
+    window._playback.set_audio(compose_result)
 
     window.voice_clone_page.preview_button.click()
 
     assert len(synthesis_calls) == 1
     assert synthesis_calls[0][1]["voice_artifact_path"].endswith(".npz")
     assert synthesis_calls[0][1]["engine_id_override"] == "vieneu-v3"
+    assert window._playback.current_result is compose_result
+
+    clone_result = SynthesisResult(np.full(80, -0.1, dtype=np.float32), 24_000)
+    monkeypatch.setattr(window._clone_playback, "play", lambda: None)
+    window._synthesis_completed(clone_result)
+
+    assert window._playback.current_result is compose_result
+    assert window._clone_playback.current_result is clone_result
 
     view_model._selected_engine_id = "vieneu-v3"
     view_model._selected_capabilities = SimpleNamespace(voice_cloning=True)
@@ -190,7 +215,7 @@ def test_open_file_loads_text_into_editor(
     ("width", "mode", "workspace_direction", "settings_direction"),
     [
         (1080, "wide", QBoxLayout.Direction.LeftToRight, QBoxLayout.Direction.TopToBottom),
-        (820, "compact", QBoxLayout.Direction.TopToBottom, QBoxLayout.Direction.LeftToRight),
+        (820, "compact", QBoxLayout.Direction.TopToBottom, QBoxLayout.Direction.TopToBottom),
         (680, "narrow", QBoxLayout.Direction.TopToBottom, QBoxLayout.Direction.TopToBottom),
     ],
 )
@@ -222,9 +247,21 @@ def test_selecting_engine_updates_voice_list(qtbot, settings: Settings) -> None:
     assert window.voice_selector.voice_combo.isEnabled()
 
 
-def test_voice_and_style_are_separate_cards(qtbot, settings: Settings) -> None:  # type: ignore[no-untyped-def]
+def test_settings_sections_are_separate_cards(qtbot, settings: Settings) -> None:  # type: ignore[no-untyped-def]
     window, _ = _window(qtbot, settings)
 
+    assert isinstance(window.engine_selector.combo, ChevronComboBox)
+    assert isinstance(window.voice_selector.voice_combo, ChevronComboBox)
+    assert isinstance(window.voice_style.style_combo, ChevronComboBox)
+    assert window.engine_selector.combo.maxVisibleItems() == 8
+    assert window.voice_selector.voice_combo.maxVisibleItems() == 8
+    assert window.voice_style.style_combo.maxVisibleItems() == 8
+    assert (
+        window.voice_selector.voice_combo.style().styleHint(
+            QStyle.StyleHint.SH_ComboBox_Popup
+        )
+        == 0
+    )
     assert window.voice_selector.objectName() == "voiceSelectorCard"
     assert window.voice_selector.title() == "Chọn giọng"
     assert window.voice_style.objectName() == "voiceStyleCard"
@@ -237,6 +274,12 @@ def test_voice_and_style_are_separate_cards(qtbot, settings: Settings) -> None: 
         for index in range(window.voice_style.style_combo.count())
     ] == ["Tự nhiên", "Tin tức", "Kể chuyện"]
     assert window.voice_style.current_style_id() == "tu_nhien"
+    assert window.engine_selector.property("card") is True
+    assert window.engine_selector.parent() is window._settings_container
+    assert window.voice_selector.parent() is window._settings_container
+    assert window.voice_style.parent() is window._settings_container
+    assert window.voice_style.adjustments_divider.objectName() == "sectionDivider"
+    assert window.voice_style.adjustments_divider.height() == 1
 
 
 def test_style_selection_is_independent_from_voice(
