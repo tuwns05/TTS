@@ -18,20 +18,29 @@ from PySide6.QtWidgets import (
 
 from vntts.config.settings import Settings
 from vntts.config.theme import THEME, get_system_font
-from vntts.db.models import AudioEffects, SynthesisResult, VIENEU_V3_ENGINE_ID, VoiceInfo
+from vntts.db.models import (
+    VIENEU_V3_ENGINE_ID,
+    AudioEffects,
+    SynthesisResult,
+    VoiceInfo,
+)
 from vntts.services.document_import import ImportedDocument
 from vntts.services.playback import PlaybackService
 from vntts.services.voice_profiles import VoiceProfileStore
-from vntts.utils.exceptions import PlaybackError
 from vntts.ui.compose_view import (
-    EngineSelector,
     MainViewModel,
     PlaybackControls,
     TextInputWidget,
     WaveformPreview,
 )
-from vntts.ui.settings_panel import VoiceSelectorWidget, VoiceStyleWidget
+from vntts.ui.settings_panel import (
+    ActiveModelCard,
+    ModelSettingsPage,
+    VoiceSelectorWidget,
+    VoiceStyleWidget,
+)
 from vntts.ui.voice_clone_view import VoiceClonePage
+from vntts.utils.exceptions import PlaybackError
 
 
 class MainWindow(QMainWindow):
@@ -65,7 +74,7 @@ class MainWindow(QMainWindow):
         self._responsive_mode = ""
 
         self.text_input = TextInputWidget(self)
-        self.engine_selector = EngineSelector(self)
+        self.active_model_card = ActiveModelCard(self)
         self.voice_selector = VoiceSelectorWidget(self)
         self.voice_style = VoiceStyleWidget(settings.audio, self)
         self.playback_controls = PlaybackControls(self)
@@ -126,7 +135,7 @@ class MainWindow(QMainWindow):
         # QGroupBox reserves THEME.space_3 above its border for the title,
         # which also creates the visual gap shown between the stacked cards.
         self._settings_layout.setSpacing(0)
-        self._settings_layout.addWidget(self.engine_selector)
+        self._settings_layout.addWidget(self.active_model_card)
         self._settings_layout.addWidget(self.voice_selector)
         self._settings_layout.addWidget(self.voice_style)
         self._settings_layout.addStretch()
@@ -227,10 +236,17 @@ class MainWindow(QMainWindow):
         self._clone_scroll_area.setWidgetResizable(True)
         self._clone_scroll_area.setFrameShape(QFrame.Shape.NoFrame)
         self._clone_scroll_area.setWidget(self.voice_clone_page)
+        self.model_settings_page = ModelSettingsPage(self)
+        self._model_settings_scroll_area = QScrollArea(self)
+        self._model_settings_scroll_area.setObjectName("modelSettingsScrollArea")
+        self._model_settings_scroll_area.setWidgetResizable(True)
+        self._model_settings_scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        self._model_settings_scroll_area.setWidget(self.model_settings_page)
         self.page_stack = QStackedWidget(self)
         self.page_stack.setObjectName("pageStack")
         self.page_stack.addWidget(self._scroll_area)
         self.page_stack.addWidget(self._clone_scroll_area)
+        self.page_stack.addWidget(self._model_settings_scroll_area)
 
         self._sidebar = QFrame(self)
         self._sidebar.setObjectName("sidebar")
@@ -242,7 +258,13 @@ class MainWindow(QMainWindow):
         self.nav_compose_button.setObjectName("navComposeButton")
         self.nav_clone_button = QPushButton("Nhân bản giọng", self._sidebar)
         self.nav_clone_button.setObjectName("navCloneButton")
-        for button in (self.nav_compose_button, self.nav_clone_button):
+        self.nav_settings_button = QPushButton("Cài đặt", self._sidebar)
+        self.nav_settings_button.setObjectName("navSettingsButton")
+        for button in (
+            self.nav_compose_button,
+            self.nav_clone_button,
+            self.nav_settings_button,
+        ):
             button.setCheckable(True)
             button.setProperty("nav", True)
         self.nav_compose_button.setChecked(True)
@@ -258,6 +280,7 @@ class MainWindow(QMainWindow):
         sidebar_layout.addSpacing(THEME.space_5)
         sidebar_layout.addWidget(self.nav_compose_button)
         sidebar_layout.addWidget(self.nav_clone_button)
+        sidebar_layout.addWidget(self.nav_settings_button)
         sidebar_layout.addStretch()
 
         shell = QWidget(self)
@@ -271,8 +294,14 @@ class MainWindow(QMainWindow):
 
         self._connect_signals()
         self._apply_responsive_layout(self.width() - THEME.sidebar_width)
-        self.engine_selector.set_engines(view_model.engine_infos, settings.tts.default_engine)
-        self.engine_selector.set_recommendation(view_model.recommendation)
+        self.model_settings_page.set_models(
+            view_model.engine_infos,
+            settings.tts.default_engine,
+        )
+        self.model_settings_page.set_hardware(
+            view_model.hardware,
+            settings.hardware_recommendation.high_tier.min_vram_gb,
+        )
         self._profiles_changed(self.voice_clone_page.profiles)
         self._view_model.initialize()
 
@@ -381,13 +410,14 @@ class MainWindow(QMainWindow):
     def _connect_signals(self) -> None:
         self.nav_compose_button.clicked.connect(lambda: self._show_page(0))
         self.nav_clone_button.clicked.connect(lambda: self._show_page(1))
+        self.nav_settings_button.clicked.connect(lambda: self._show_page(2))
         self.voice_clone_page.profiles_changed.connect(self._profiles_changed)
         self.voice_clone_page.enrollment_requested.connect(self._enroll_voice)
         self.voice_clone_page.preview_requested.connect(self._preview_cloned_voice)
         self.voice_clone_page.stop_preview_requested.connect(self._clone_playback.stop)
         self.text_input.text_changed.connect(lambda _text: self._refresh_actions())
         self.text_input.open_file_requested.connect(self._choose_document)
-        self.engine_selector.engine_changed.connect(self._view_model.select_engine)
+        self.model_settings_page.load_requested.connect(self._view_model.load_model)
         self.synthesize_button.clicked.connect(self._request_synthesis)
         self.cancel_button.clicked.connect(self._view_model.cancel_current_task)
         self._view_model.voices_changed.connect(self._voices_changed)
@@ -397,6 +427,7 @@ class MainWindow(QMainWindow):
         self._view_model.synthesis_completed.connect(self._synthesis_completed)
         self._view_model.document_imported.connect(self._document_imported)
         self._view_model.voice_profile_created.connect(self._voice_profile_created)
+        self._view_model.runtime_changed.connect(self._runtime_changed)
         self.playback_controls.play_requested.connect(self._play)
         self.playback_controls.pause_requested.connect(self._playback.pause)
         self.playback_controls.stop_requested.connect(self._playback.stop)
@@ -498,6 +529,20 @@ class MainWindow(QMainWindow):
         self.page_stack.setCurrentIndex(index)
         self.nav_compose_button.setChecked(index == 0)
         self.nav_clone_button.setChecked(index == 1)
+        self.nav_settings_button.setChecked(index == 2)
+
+    def _runtime_changed(self, runtime: object) -> None:
+        self.active_model_card.set_runtime(runtime)
+        self.model_settings_page.set_runtime(runtime)
+        if runtime is None:
+            self._engine_badge.setText("Chưa load model")
+            self._engine_badge.setProperty("state", "neutral")
+        else:
+            device = "GPU" if bool(getattr(runtime, "is_gpu", False)) else "CPU"
+            self._engine_badge.setText(f"Offline · {device}")
+            self._engine_badge.setProperty("state", "success")
+        self._engine_badge.style().unpolish(self._engine_badge)
+        self._engine_badge.style().polish(self._engine_badge)
 
     def _profiles_changed(self, profiles: list) -> None:
         self._cloned_voice_artifacts = {
@@ -557,7 +602,7 @@ class MainWindow(QMainWindow):
             "error": ("Có lỗi", "error"),
             "cancelled": ("Đã dừng", "neutral"),
         }
-        self.engine_selector.set_status(*engine_status[state])
+        self.active_model_card.set_status(*engine_status[state])
         busy = state in {
             "loading_engine",
             "importing_document",
@@ -566,7 +611,7 @@ class MainWindow(QMainWindow):
         }
         self.cancel_button.setEnabled(busy)
         self.cancel_button.setVisible(busy)
-        self.engine_selector.combo.setEnabled(not busy)
+        self.model_settings_page.set_loading(state == "loading_engine")
         self.text_input.open_file_button.setEnabled(not busy)
         self.text_input.editor.setReadOnly(state == "importing_document")
         self._refresh_actions()

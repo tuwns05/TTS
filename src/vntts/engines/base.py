@@ -9,6 +9,7 @@ import numpy as np
 
 from vntts.db.models import (
     EngineInfo,
+    EngineRuntimeInfo,
     EngineSynthesisOptions,
     SynthesisResult,
     VoiceInfo,
@@ -51,6 +52,12 @@ class BaseTTSEngine(ABC):
         """
 
         return True
+
+    @property
+    def runtime_info(self) -> EngineRuntimeInfo | None:
+        """Return the active backend/device after the model has loaded."""
+
+        return None
 
     def encode_voice_reference(self, reference_audio_path: str) -> tuple[np.ndarray, np.ndarray]:
         """Extract reusable voice features when the adapter supports enrollment."""

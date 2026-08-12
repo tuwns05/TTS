@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 import numpy as np
-from PySide6.QtCore import QObject, QRectF, QSize, QThreadPool, Qt, Signal
-from PySide6.QtGui import QColor, QMouseEvent, QPaintEvent, QPainter, QPen
+from PySide6.QtCore import QObject, QRectF, QSize, Qt, QThreadPool, Signal
+from PySide6.QtGui import QColor, QMouseEvent, QPainter, QPaintEvent, QPen
 from PySide6.QtWidgets import (
-    QFrame,
     QHBoxLayout,
     QLabel,
     QPlainTextEdit,
@@ -23,18 +24,20 @@ from vntts.db.models import (
     AudioEffects,
     EngineInfo,
     EngineRecommendation,
+    EngineRuntimeInfo,
     EngineSynthesisOptions,
+    HardwareInfo,
     SynthesisRequest,
     SynthesisResult,
     VoiceInfo,
 )
 from vntts.engines.base import EngineCapabilities
 from vntts.engines.factory import EngineRegistry
-from vntts.ui.controls import ChevronComboBox
 from vntts.services.document_import import DocumentTextImporter, ImportedDocument
 from vntts.services.synthesis import SynthesizeSpeech
 from vntts.services.voice_enrollment import VoiceEnrollmentService
 from vntts.services.voice_profiles import VoiceProfile
+from vntts.ui.controls import ChevronComboBox
 from vntts.utils.exceptions import AppError, ValidationError
 from vntts.utils.worker import TaskWorker
 
@@ -48,9 +51,10 @@ class MainViewModel(QObject):
     synthesis_completed = Signal(object)
     document_imported = Signal(object)
     voice_profile_created = Signal(object)
+    runtime_changed = Signal(object)
     error_occurred = Signal(str)
 
-    VALID_STATES = {
+    VALID_STATES: ClassVar[set[str]] = {
         "idle",
         "loading_engine",
         "importing_document",
@@ -67,6 +71,7 @@ class MainViewModel(QObject):
         synthesize_speech: SynthesizeSpeech,
         settings: Settings,
         recommendation: EngineRecommendation | None = None,
+        hardware: HardwareInfo | None = None,
         thread_pool: QThreadPool | None = None,
         document_importer: DocumentTextImporter | None = None,
         voice_enrollment_service: VoiceEnrollmentService | None = None,
@@ -76,6 +81,7 @@ class MainViewModel(QObject):
         self._synthesize_speech = synthesize_speech
         self._settings = settings
         self._recommendation = recommendation
+        self._hardware = hardware
         self._thread_pool = thread_pool or QThreadPool.globalInstance()
         self._document_importer = document_importer or DocumentTextImporter()
         self._voice_enrollment_service = voice_enrollment_service
@@ -85,6 +91,7 @@ class MainViewModel(QObject):
         self._selected_engine_id: str | None = None
         self._voices: list[VoiceInfo] = []
         self._selected_capabilities: EngineCapabilities | None = None
+        self._runtime_info: EngineRuntimeInfo | None = None
         self._state_before_document_import = "idle"
 
     @property
@@ -104,6 +111,14 @@ class MainViewModel(QObject):
         """Return the non-binding runtime recommendation."""
 
         return self._recommendation
+
+    @property
+    def hardware(self) -> HardwareInfo | None:
+        return self._hardware
+
+    @property
+    def runtime_info(self) -> EngineRuntimeInfo | None:
+        return self._runtime_info
 
     @property
     def selected_engine_id(self) -> str | None:
@@ -131,13 +146,42 @@ class MainViewModel(QObject):
             self._fail("Không có engine nào được đăng ký.")
             return
         default_id = self._settings.tts.default_engine
-        self.select_engine(default_id if self._registry.contains(default_id) else engine_ids[0])
+        engine_id = default_id if self._registry.contains(default_id) else engine_ids[0]
+        self.load_model(engine_id, self._startup_device())
+
+    def _startup_device(self) -> str:
+        """Prefer CUDA only when detection and the configured VRAM threshold pass."""
+
+        if self._hardware is None:
+            return "auto"
+        minimum_vram = self._settings.hardware_recommendation.high_tier.min_vram_gb
+        gpu_is_suitable = (
+            self._hardware.cuda_available
+            and self._hardware.vram_gb is not None
+            and minimum_vram is not None
+            and self._hardware.vram_gb >= minimum_vram
+        )
+        return "auto" if gpu_is_suitable else "cpu"
 
     def select_engine(self, engine_id: str) -> None:
         """Load the selected engine in a worker and publish its voices."""
 
+        self.load_model(engine_id, "auto")
+
+    def load_model(self, engine_id: str, device: str = "auto") -> None:
+        """Load a packaged model on the selected device in a background worker."""
+
         if not self._registry.contains(engine_id):
             self._fail(f"Không tìm thấy engine '{engine_id}'.")
+            return
+        if device not in {"auto", "cpu", "cuda"}:
+            self._fail(f"Thiết bị '{device}' không được hỗ trợ.")
+            return
+        if device == "cuda" and self._hardware is not None and not self._hardware.cuda_available:
+            self.error_occurred.emit(
+                "Không tìm thấy GPU NVIDIA/CUDA khả dụng. "
+                "Hãy chọn CPU để tiếp tục."
+            )
             return
         self.cancel_current_task()
         self._selected_engine_id = engine_id
@@ -146,7 +190,12 @@ class MainViewModel(QObject):
         self._voices = []
         self.voices_changed.emit([])
         self._set_state("loading_engine")
-        worker = TaskWorker(self._synthesize_speech.prepare_engine, engine_id)
+        worker = TaskWorker(
+            self._synthesize_speech.prepare_engine,
+            engine_id,
+            device,
+            True,
+        )
         worker.signals.result.connect(
             lambda voices, selected=engine_id: self._engine_ready(selected, voices)
         )
@@ -271,7 +320,9 @@ class MainViewModel(QObject):
         if engine_id != self._selected_engine_id:
             return
         self._voices = list(voices)
+        self._runtime_info = self._synthesize_speech.runtime_info(engine_id)
         self.voices_changed.emit(self.voices)
+        self.runtime_changed.emit(self._runtime_info)
         self._set_state("idle")
 
     def _synthesis_ready(self, result: SynthesisResult) -> None:
@@ -287,6 +338,11 @@ class MainViewModel(QObject):
         self.document_imported.emit(document)
 
     def _fail(self, message: str) -> None:
+        if self._selected_engine_id is not None:
+            self._runtime_info = self._synthesize_speech.runtime_info(
+                self._selected_engine_id
+            )
+            self.runtime_changed.emit(self._runtime_info)
         self._set_state("error")
         self.error_occurred.emit(message)
 

@@ -2,20 +2,20 @@
 
 from __future__ import annotations
 
-import importlib
 import platform
+import subprocess
 
 import cpuinfo
 import psutil
 from loguru import logger
 
 from vntts.db.models import (
-    EngineRecommendation,
-    HardwareInfo,
-    HardwareRecommendationSettings,
     KOKORO_VI_ENGINE_ID,
     VIENEU_V2_ENGINE_ID,
     VIENEU_V3_ENGINE_ID,
+    EngineRecommendation,
+    HardwareInfo,
+    HardwareRecommendationSettings,
 )
 
 
@@ -82,14 +82,14 @@ class HardwareDetector:
         try:
             details = cpuinfo.get_cpu_info()
             cpu_name = str(details.get("brand_raw") or cpu_name)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - hardware probing is best-effort
             logger.debug("Không đọc được tên CPU chi tiết: {}", type(exc).__name__)
 
         try:
             physical_cores = psutil.cpu_count(logical=False) or 0
             logical_cores = psutil.cpu_count(logical=True) or physical_cores
             ram_gb = psutil.virtual_memory().total / (1024**3)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - hardware probing is best-effort
             logger.warning("Không đọc được đầy đủ CPU/RAM: {}", type(exc).__name__)
             physical_cores = 0
             logical_cores = 0
@@ -110,22 +110,36 @@ class HardwareDetector:
 
     @staticmethod
     def _detect_cuda() -> tuple[str | None, float | None, bool]:
-        try:
-            torch = importlib.import_module("torch")
-        except ImportError:
-            return None, None, False
-        except Exception as exc:
-            logger.debug("Không thể import PyTorch tùy chọn: {}", type(exc).__name__)
-            return None, None, False
+        """Probe the NVIDIA driver without importing PyTorch before showing UI."""
 
         try:
-            if not bool(torch.cuda.is_available()):
+            startup_info = None
+            creation_flags = 0
+            if platform.system() == "Windows":
+                startup_info = subprocess.STARTUPINFO()
+                startup_info.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                creation_flags = subprocess.CREATE_NO_WINDOW
+            result = subprocess.run(
+                [
+                    "nvidia-smi",
+                    "--query-gpu=name,memory.total",
+                    "--format=csv,noheader,nounits",
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=5,
+                startupinfo=startup_info,
+                creationflags=creation_flags,
+            )
+            first_gpu = next(
+                (line.strip() for line in result.stdout.splitlines() if line.strip()),
+                "",
+            )
+            if not first_gpu or "," not in first_gpu:
                 return None, None, False
-            device_index = int(torch.cuda.current_device())
-            gpu_name = str(torch.cuda.get_device_name(device_index))
-            properties = torch.cuda.get_device_properties(device_index)
-            vram_gb = float(properties.total_memory) / (1024**3)
-            return gpu_name, vram_gb, True
-        except Exception as exc:
-            logger.debug("Không thể đọc thông tin CUDA: {}", type(exc).__name__)
+            gpu_name, memory_mib = first_gpu.rsplit(",", maxsplit=1)
+            return gpu_name.strip(), float(memory_mib.strip()) / 1024, True
+        except (OSError, ValueError, subprocess.SubprocessError) as exc:
+            logger.debug("Không thể đọc thông tin NVIDIA: {}", type(exc).__name__)
             return None, None, False

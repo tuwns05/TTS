@@ -1,8 +1,8 @@
 """Tests for single-active-engine lifecycle coordination."""
 
+from tests.stubs import StubTTSEngine
 from vntts.db.models import EngineInfo
 from vntts.engines.factory import EngineFactory, EngineLifecycleManager, EngineRegistry
-from tests.stubs import StubTTSEngine
 
 
 class _TrackingStub(StubTTSEngine):
@@ -52,6 +52,19 @@ def test_reactivating_same_engine_does_not_reload_or_recreate() -> None:
 
     assert lifecycle.activate("only") is lifecycle.activate("only")
     assert calls == 1
+
+
+def test_force_reload_reloads_same_engine_for_device_switch() -> None:
+    registry = EngineRegistry()
+    engine = _TrackingStub("only")
+    registry.register("only", lambda: engine, engine.engine_info, engine.capabilities)
+    lifecycle = EngineLifecycleManager(EngineFactory(registry))
+
+    lifecycle.activate("only", "cpu")
+    lifecycle.activate("only", "cpu", force_reload=True)
+
+    assert engine.unload_count == 1
+    assert engine.is_loaded()
 
 
 def test_unload_all_releases_and_forgets_adapters() -> None:

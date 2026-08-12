@@ -186,6 +186,24 @@ QPushButton#synthesizeButton {
     font-weight: 500;
 }
 
+QPushButton#loadModelButton {
+    color: #FFFFFF;
+    background: #3B82F6;
+    border-color: #3B82F6;
+    font-weight: 500;
+}
+
+QPushButton#loadModelButton:hover {
+    background: #2563EB;
+    border-color: #2563EB;
+}
+
+QPushButton#loadModelButton:disabled {
+    color: #BFDBFE;
+    background: #93C5FD;
+    border-color: #93C5FD;
+}
+
 QPushButton#synthesizeButton:hover {
     background: #2563EB;
     border-color: #2563EB;

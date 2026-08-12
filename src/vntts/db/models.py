@@ -6,7 +6,6 @@ import numpy as np
 
 from vntts.utils.exceptions import ValidationError
 
-
 VIENEU_V3_ENGINE_ID = "vieneu-v3"
 VIENEU_V2_ENGINE_ID = "vieneu-v2"
 KOKORO_VI_ENGINE_ID = "kokoro-vi"
@@ -47,6 +46,28 @@ class VoiceInfo:
             raise ValidationError("Mã giọng không được để trống.")
         if not self.display_name.strip():
             raise ValidationError("Tên hiển thị giọng không được để trống.")
+
+
+@dataclass(frozen=True)
+class EngineRuntimeInfo:
+    """Describe the model runtime that is actually loaded."""
+
+    engine_id: str
+    display_name: str
+    device: str
+    backend: str
+    device_name: str
+    fallback_reason: str | None = None
+
+    @property
+    def is_gpu(self) -> bool:
+        return self.device == "cuda"
+
+    @property
+    def summary(self) -> str:
+        location = f"GPU · {self.device_name}" if self.is_gpu else "CPU"
+        backend_name = "PyTorch" if self.backend == "pytorch" else self.backend.upper()
+        return f"{self.display_name} · {location} · {backend_name}"
 
 
 @dataclass(frozen=True)

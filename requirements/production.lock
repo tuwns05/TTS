@@ -4,7 +4,7 @@
 #
 #    pip-compile --allow-unsafe --generate-hashes --output-file='requirements\production.lock' --strip-extras 'requirements\production.in'
 #
---extra-index-url https://download.pytorch.org/whl/cpu
+--extra-index-url https://download.pytorch.org/whl/cu128
 
 altgraph==0.17.5 \
     --hash=sha256:c87b395dd12fabde9c99573a9749d67da8d29ef9de0125c7f536699b4a9bc9e7 \
@@ -1938,7 +1938,8 @@ tomlkit==0.14.0 \
     --hash=sha256:592064ed85b40fa213469f81ac584f67a4f2992509a7c3ea2d632208623a3680 \
     --hash=sha256:cf00efca415dbd57575befb1f6634c4f42d2d87dbba376128adb42c121b87064
     # via gradio
-torch==2.8.0+cpu \
+torch==2.8.0+cu128 \
+    --hash=sha256:34c55443aafd31046a7963b63d30bc3b628ee4a704f826796c865fdfd05bb596 \
     --hash=sha256:0e34e276722ab7dd0dffa9e12fe2135a9b34a0e300c456ed7ad6430229404eb5 \
     --hash=sha256:16d75fa4e96ea28a785dfd66083ca55eb1058b6d6c5413f01656ca965ee2077e \
     --hash=sha256:2be20b2c05a0cce10430cc25f32b689259640d273232b2de357c35729132256d \
@@ -1968,7 +1969,8 @@ torch==2.8.0+cpu \
     # via
     #   -r requirements/production.in
     #   torchaudio
-torchaudio==2.8.0+cpu \
+torchaudio==2.8.0+cu128 \
+    --hash=sha256:7a1eb6154e05b8056b34c7a41495e09d57f79eb0180eb4e7f3bb2a61845ca8ea \
     --hash=sha256:0c2d081e24204768e636cbf05e1377c8a6964b8ed6fa3aa5092ba9af9bbc19c5 \
     --hash=sha256:7e9a06f6dc73f98aff1a5540f8d6103b66e4c945c1d94612087954905f221171 \
     --hash=sha256:89c2d04fe1cb7c31eb042f7b36e1ce8e2afacf769ecd5f216527e184e4857099 \

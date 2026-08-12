@@ -250,10 +250,11 @@ def test_selecting_engine_updates_voice_list(qtbot, settings: Settings) -> None:
 def test_settings_sections_are_separate_cards(qtbot, settings: Settings) -> None:  # type: ignore[no-untyped-def]
     window, _ = _window(qtbot, settings)
 
-    assert isinstance(window.engine_selector.combo, ChevronComboBox)
+    assert isinstance(window.model_settings_page.model_combo, ChevronComboBox)
+    assert isinstance(window.model_settings_page.device_combo, ChevronComboBox)
     assert isinstance(window.voice_selector.voice_combo, ChevronComboBox)
     assert isinstance(window.voice_style.style_combo, ChevronComboBox)
-    assert window.engine_selector.combo.maxVisibleItems() == 8
+    assert window.model_settings_page.model_combo.maxVisibleItems() == 8
     assert window.voice_selector.voice_combo.maxVisibleItems() == 8
     assert window.voice_style.style_combo.maxVisibleItems() == 8
     assert (
@@ -274,12 +275,30 @@ def test_settings_sections_are_separate_cards(qtbot, settings: Settings) -> None
         for index in range(window.voice_style.style_combo.count())
     ] == ["Tự nhiên", "Tin tức", "Kể chuyện"]
     assert window.voice_style.current_style_id() == "tu_nhien"
-    assert window.engine_selector.property("card") is True
-    assert window.engine_selector.parent() is window._settings_container
+    assert window.active_model_card.property("card") is True
+    assert window.active_model_card.parent() is window._settings_container
     assert window.voice_selector.parent() is window._settings_container
     assert window.voice_style.parent() is window._settings_container
     assert window.voice_style.adjustments_divider.objectName() == "sectionDivider"
     assert window.voice_style.adjustments_divider.height() == 1
+
+
+def test_model_selection_is_only_on_settings_page(qtbot, settings: Settings) -> None:  # type: ignore[no-untyped-def]
+    window, _ = _window(qtbot, settings)
+
+    assert window.page_stack.count() == 3
+    assert window.active_model_card.model_label.text() == "Stub TTS Engine"
+    assert window.findChild(ChevronComboBox, "engineCombo") is None
+
+    window.nav_settings_button.click()
+
+    assert window.page_stack.currentIndex() == 2
+    assert window.nav_settings_button.isChecked()
+    assert window.model_settings_page.model_combo.count() == 1
+    assert [
+        window.model_settings_page.device_combo.itemData(index)
+        for index in range(window.model_settings_page.device_combo.count())
+    ] == ["auto", "cuda", "cpu"]
 
 
 def test_style_selection_is_independent_from_voice(

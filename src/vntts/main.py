@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 import wave
 from collections.abc import Sequence
+from multiprocessing import freeze_support
 from pathlib import Path
 
 import numpy as np
@@ -16,8 +17,9 @@ from vntts.config.theme import THEME, build_stylesheet, get_system_font
 from vntts.db.models import EngineSynthesisOptions
 from vntts.engines.factory import EngineFactory, EngineLifecycleManager, EngineRegistry
 from vntts.engines.vieneu_engine import VieNeuV3Engine
-from vntts.services.synthesis import SynthesizeSpeech
+from vntts.services.hardware import HardwareDetector
 from vntts.services.playback import PlaybackService
+from vntts.services.synthesis import SynthesizeSpeech
 from vntts.services.voice_enrollment import VoiceEnrollmentService
 from vntts.services.voice_profiles import VoiceProfileStore
 from vntts.ui.compose_view import MainViewModel
@@ -49,7 +51,7 @@ def build_application(argv: Sequence[str] | None = None) -> tuple[QApplication, 
         tokenizer_path=(local_v3_tokenizer if local_v3_tokenizer.is_dir() else None),
         bundle_path=(bundled_v3 if is_model_bundle else None),
         allow_download=not is_production,
-        backend=("onnx" if is_production else "auto"),
+        backend="auto",
     )
 
     registry.register(
@@ -67,11 +69,13 @@ def build_application(argv: Sequence[str] | None = None) -> tuple[QApplication, 
     )
     voice_profile_store = VoiceProfileStore(settings.paths.data_dir)
     voice_enrollment = VoiceEnrollmentService(use_case, voice_profile_store)
+    hardware = HardwareDetector().detect()
     view_model = MainViewModel(
         registry,
         use_case,
         settings,
         None,
+        hardware=hardware,
         voice_enrollment_service=voice_enrollment,
     )
     window = MainWindow(
@@ -92,15 +96,18 @@ def build_application(argv: Sequence[str] | None = None) -> tuple[QApplication, 
 def main() -> int:
     """Start the Qt event loop."""
 
-    if len(sys.argv) == 3 and sys.argv[1] == "--production-smoke":
-        return _run_production_smoke(Path(sys.argv[2]))
+    freeze_support()
+
+    if len(sys.argv) in {3, 4} and sys.argv[1] == "--production-smoke":
+        device = sys.argv[3] if len(sys.argv) == 4 else "cpu"
+        return _run_production_smoke(Path(sys.argv[2]), device)
 
     application, window = build_application()
     window.show()
     return application.exec()
 
 
-def _run_production_smoke(output_path: Path) -> int:
+def _run_production_smoke(output_path: Path, device: str = "cpu") -> int:
     """Verify that the frozen artifact can load and synthesize real audio."""
 
     settings = load_settings()
@@ -108,10 +115,10 @@ def _run_production_smoke(output_path: Path) -> int:
     engine = VieNeuV3Engine(
         bundle_path=settings.paths.bundled_models_dir / "vieneu-v3",
         allow_download=False,
-        backend="onnx",
+        backend="auto",
     )
     try:
-        engine.load("cpu")
+        engine.load(device)
         voice = engine.list_voices()[0]
         result = engine.synthesize(
             "Xin chào, đây là bản kiểm tra đóng gói.",
@@ -134,9 +141,11 @@ def _run_production_smoke(output_path: Path) -> int:
             "Production smoke synthesis succeeded",
             samples=int(pcm.size),
             sample_rate=result.sample_rate,
+            device=engine.runtime_info.device if engine.runtime_info else None,
+            backend=engine.runtime_info.backend if engine.runtime_info else None,
         )
         return 0
-    except Exception:
+    except Exception:  # noqa: BLE001 - smoke command converts all failures to exit code 1
         logger.exception("Production smoke synthesis failed")
         return 1
     finally:

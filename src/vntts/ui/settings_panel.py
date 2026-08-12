@@ -4,22 +4,192 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
     QGroupBox,
+    QHBoxLayout,
     QLabel,
-    QSlider,
+    QPushButton,
     QSizePolicy,
+    QSlider,
     QVBoxLayout,
     QWidget,
 )
 
 from vntts.config.settings import AudioSettings
 from vntts.config.theme import THEME
-from vntts.db.models import AudioEffects, SPEECH_STYLE_NAMES, VoiceInfo
+from vntts.db.models import (
+    SPEECH_STYLE_NAMES,
+    AudioEffects,
+    EngineInfo,
+    EngineRuntimeInfo,
+    HardwareInfo,
+    VoiceInfo,
+)
 from vntts.ui.controls import ChevronComboBox
+
+
+class ActiveModelCard(QFrame):
+    """Read-only summary of the model loaded from the Settings page."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("activeModelCard")
+        self.setProperty("card", True)
+        title = QLabel("Model đang hoạt động", self)
+        title.setProperty("role", "section")
+        self.model_label = QLabel("Chưa load model", self)
+        self.model_label.setObjectName("activeModelName")
+        self.runtime_label = QLabel("Mở Cài đặt để chọn model và thiết bị.", self)
+        self.runtime_label.setObjectName("helperText")
+        self.runtime_label.setWordWrap(True)
+        self.status_badge = QLabel("Đang chờ", self)
+        self.status_badge.setObjectName("engineStatus")
+        self.status_badge.setProperty("state", "neutral")
+        header = QHBoxLayout()
+        header.addWidget(title)
+        header.addStretch()
+        header.addWidget(self.status_badge)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(THEME.space_3, THEME.space_3, THEME.space_3, THEME.space_3)
+        layout.setSpacing(THEME.space_1)
+        layout.addLayout(header)
+        layout.addWidget(self.model_label)
+        layout.addWidget(self.runtime_label)
+
+    def set_runtime(self, info: EngineRuntimeInfo | None) -> None:
+        if info is None:
+            self.model_label.setText("Chưa load model")
+            self.runtime_label.setText("Mở Cài đặt để chọn model và thiết bị.")
+            return
+        self.model_label.setText(info.display_name)
+        backend = "PyTorch" if info.backend == "pytorch" else info.backend.upper()
+        target = f"GPU · {info.device_name}" if info.is_gpu else "CPU"
+        details = f"{target} · {backend}"
+        if info.fallback_reason:
+            details += f"\n{info.fallback_reason}"
+        self.runtime_label.setText(details)
+
+    def set_status(self, text: str, state: str) -> None:
+        self.status_badge.setText(text)
+        self.status_badge.setProperty("state", state)
+        self.status_badge.style().unpolish(self.status_badge)
+        self.status_badge.style().polish(self.status_badge)
+
+
+class ModelSettingsPage(QWidget):
+    """Select a packaged model and explicitly load it on CPU, GPU, or auto."""
+
+    load_requested = Signal(str, str)
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("modelSettingsPage")
+        title = QLabel("Cài đặt model", self)
+        title.setProperty("role", "title")
+        intro = QLabel(
+            "Chọn model đã được đóng gói và thiết bị suy luận. "
+            "Khi đổi thiết bị, model sẽ được load lại.",
+            self,
+        )
+        intro.setObjectName("helperText")
+        intro.setWordWrap(True)
+
+        card = QFrame(self)
+        card.setObjectName("modelSettingsCard")
+        card.setProperty("card", True)
+        model_label = QLabel("Model đóng gói", card)
+        model_label.setObjectName("fieldLabel")
+        self.model_combo = ChevronComboBox(card)
+        self.model_combo.setObjectName("packagedModelCombo")
+        self.model_combo.setAccessibleName("Model đóng gói")
+        device_label = QLabel("Thiết bị xử lý", card)
+        device_label.setObjectName("fieldLabel")
+        self.device_combo = ChevronComboBox(card)
+        self.device_combo.setObjectName("runtimeDeviceCombo")
+        self.device_combo.setAccessibleName("Thiết bị xử lý")
+        self.device_combo.addItem("Tự động (khuyến nghị)", "auto")
+        self.device_combo.addItem("GPU NVIDIA", "cuda")
+        self.device_combo.addItem("CPU", "cpu")
+        self.hardware_label = QLabel("Chưa kiểm tra phần cứng.", card)
+        self.hardware_label.setObjectName("helperText")
+        self.hardware_label.setWordWrap(True)
+        self.active_label = QLabel("Chưa load model.", card)
+        self.active_label.setObjectName("runtimeSummary")
+        self.active_label.setWordWrap(True)
+        self.load_button = QPushButton("Load model", card)
+        self.load_button.setObjectName("loadModelButton")
+        self.load_button.setProperty("variant", "primary")
+        self.load_button.clicked.connect(self._emit_load)
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(THEME.space_4, THEME.space_4, THEME.space_4, THEME.space_4)
+        card_layout.setSpacing(THEME.space_2)
+        card_layout.addWidget(model_label)
+        card_layout.addWidget(self.model_combo)
+        card_layout.addWidget(device_label)
+        card_layout.addWidget(self.device_combo)
+        card_layout.addWidget(self.hardware_label)
+        card_layout.addWidget(self.active_label)
+        actions = QHBoxLayout()
+        actions.addStretch()
+        actions.addWidget(self.load_button)
+        card_layout.addLayout(actions)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(THEME.space_5, THEME.space_4, THEME.space_5, THEME.space_5)
+        layout.setSpacing(THEME.space_3)
+        layout.addWidget(title)
+        layout.addWidget(intro)
+        layout.addWidget(card)
+        layout.addStretch()
+
+    def set_models(self, models: list[EngineInfo], selected_id: str | None) -> None:
+        self.model_combo.clear()
+        selected_index = 0
+        for index, model in enumerate(models):
+            self.model_combo.addItem(model.display_name, model.engine_id)
+            if model.engine_id == selected_id:
+                selected_index = index
+        if self.model_combo.count():
+            self.model_combo.setCurrentIndex(selected_index)
+
+    def set_hardware(self, hardware: HardwareInfo | None, minimum_vram_gb: float | None) -> None:
+        if hardware is None or not hardware.cuda_available:
+            self.hardware_label.setText(
+                "Không phát hiện CUDA. Chế độ Tự động sẽ dùng CPU/ONNX."
+            )
+            return
+        vram = f"{hardware.vram_gb:.1f} GB VRAM" if hardware.vram_gb is not None else "VRAM không xác định"
+        suitable = (
+            hardware.vram_gb is not None
+            and minimum_vram_gb is not None
+            and hardware.vram_gb >= minimum_vram_gb
+        )
+        suffix = "phù hợp để tự động dùng GPU" if suitable else "không đạt ngưỡng GPU tự động"
+        self.hardware_label.setText(f"{hardware.gpu_name} · {vram} · {suffix}.")
+
+    def set_runtime(self, info: EngineRuntimeInfo | None) -> None:
+        if info is None:
+            self.active_label.setText("Chưa load model.")
+            return
+        details = f"Đang hoạt động: {info.summary}"
+        if info.fallback_reason:
+            details += f"\n{info.fallback_reason}"
+        self.active_label.setText(details)
+
+    def set_loading(self, loading: bool) -> None:
+        self.model_combo.setEnabled(not loading)
+        self.device_combo.setEnabled(not loading)
+        self.load_button.setEnabled(not loading)
+        self.load_button.setText("Đang load..." if loading else "Load model")
+
+    def _emit_load(self) -> None:
+        engine_id = self.model_combo.currentData()
+        device = self.device_combo.currentData()
+        if engine_id is not None and device is not None:
+            self.load_requested.emit(str(engine_id), str(device))
 
 
 class VoiceSelectorWidget(QGroupBox):
@@ -193,7 +363,7 @@ class VoiceStyleWidget(QGroupBox):
             )
             self.style_combo.addItem(display_name, style_id)
         selected_index = self.style_combo.findData(selected)
-        self.style_combo.setCurrentIndex(selected_index if selected_index >= 0 else 0)
+        self.style_combo.setCurrentIndex(max(selected_index, 0))
         has_multiple_styles = self.style_combo.count() > 1
         self.style_combo.setEnabled(has_multiple_styles)
         self.style_combo.setToolTip(

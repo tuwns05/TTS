@@ -39,6 +39,8 @@ hiddenimports = [
 ]
 hiddenimports += collect_submodules("vieneu_utils")
 hiddenimports += collect_submodules("sea_g2p")
+hiddenimports += collect_submodules("vieneu._v3_turbo_engine")
+hiddenimports += ["vntts.main"]
 
 binaries = collect_dynamic_libs("onnxruntime")
 

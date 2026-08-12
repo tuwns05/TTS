@@ -1,11 +1,12 @@
 """Contract tests for VieNeu adapters without loading real models."""
 
-from pathlib import Path
 import warnings
+from pathlib import Path
 
 import numpy as np
 import pytest
 
+import vntts.engines.vieneu_engine as vieneu_module
 from vntts.db.models import EngineSynthesisOptions
 from vntts.engines.vieneu_engine import VieNeuV2Engine, VieNeuV3Engine
 from vntts.utils.exceptions import EngineLoadError, ValidationError
@@ -109,12 +110,90 @@ def test_vieneu_v3_loads_from_local_model_directory(tmp_path: Path) -> None:
             "backbone_repo": str(model_path.resolve()),
             "moss_tokenizer": str(tokenizer_path.resolve()),
             "device": "cpu",
-            "backend": "auto",
+            "backend": "onnx",
         }
     ]
     assert engine.list_voices()[0].voice_id == "bac_si_tuyen"
+    assert engine.runtime_info is not None
+    assert engine.runtime_info.device == "cpu"
+    assert engine.runtime_info.backend == "onnx"
     engine.unload()
     assert runtime.closed
+
+
+def test_vieneu_v3_gpu_uses_pytorch_backend(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model_path = tmp_path / "vieneu-v3"
+    tokenizer_path = model_path / "moss-tokenizer"
+    tokenizer_path.mkdir(parents=True)
+    calls: list[dict[str, object]] = []
+    monkeypatch.setattr(vieneu_module, "_cuda_available", lambda: True)
+    monkeypatch.setattr(VieNeuV3Engine, "_device_name", lambda self, device: "Test GPU")
+
+    engine = VieNeuV3Engine(
+        model_path,
+        tokenizer_path=tokenizer_path,
+        sdk_factory=lambda **kwargs: calls.append(kwargs) or _VieNeuRuntime(),
+    )
+    engine.load("cuda")
+
+    assert calls[0]["device"] == "cuda"
+    assert calls[0]["backend"] == "pytorch"
+    assert engine.runtime_info is not None
+    assert engine.runtime_info.is_gpu
+    assert engine.runtime_info.device_name == "Test GPU"
+
+
+def test_vieneu_v3_explicit_gpu_reports_missing_cuda(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model_path = tmp_path / "vieneu-v3"
+    tokenizer_path = model_path / "moss-tokenizer"
+    tokenizer_path.mkdir(parents=True)
+    monkeypatch.setattr(vieneu_module, "_cuda_available", lambda: False)
+    engine = VieNeuV3Engine(
+        model_path,
+        tokenizer_path=tokenizer_path,
+        sdk_factory=lambda **_: _VieNeuRuntime(),
+    )
+
+    with pytest.raises(EngineLoadError, match="GPU NVIDIA/CUDA"):
+        engine.load("cuda")
+
+
+def test_vieneu_v3_auto_falls_back_to_onnx_cpu_when_gpu_load_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model_path = tmp_path / "vieneu-v3"
+    tokenizer_path = model_path / "moss-tokenizer"
+    tokenizer_path.mkdir(parents=True)
+    calls: list[dict[str, object]] = []
+    monkeypatch.setattr(vieneu_module, "_cuda_available", lambda: True)
+
+    def factory(**kwargs: object) -> _VieNeuRuntime:
+        calls.append(kwargs)
+        if kwargs["device"] == "cuda":
+            raise RuntimeError("CUDA out of memory")
+        return _VieNeuRuntime()
+
+    engine = VieNeuV3Engine(
+        model_path,
+        tokenizer_path=tokenizer_path,
+        sdk_factory=factory,
+    )
+    engine.load("auto")
+
+    assert [(call["device"], call["backend"]) for call in calls] == [
+        ("cuda", "pytorch"),
+        ("cpu", "onnx"),
+    ]
+    assert engine.runtime_info is not None
+    assert engine.runtime_info.device == "cpu"
+    assert engine.runtime_info.fallback_reason is not None
 
 
 def test_vieneu_v3_development_can_use_official_repository() -> None:

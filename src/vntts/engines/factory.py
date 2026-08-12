@@ -139,19 +139,31 @@ class EngineLifecycleManager:
                 self._engines[engine_id] = engine
             return engine
 
-    def activate(self, engine_id: str, device: str = "auto") -> BaseTTSEngine:
+    def activate(
+        self,
+        engine_id: str,
+        device: str = "auto",
+        *,
+        force_reload: bool = False,
+    ) -> BaseTTSEngine:
         """Unload the previous engine, then load and activate the requested one."""
 
         with self._lock:
             target = self.get(engine_id)
-            if self._active_engine_id == engine_id and target.is_loaded():
+            if (
+                self._active_engine_id == engine_id
+                and target.is_loaded()
+                and not force_reload
+            ):
                 return target
             if not target.is_available():
                 raise EngineLoadError(
                     f"Engine '{engine_id}' chưa đủ SDK hoặc model local để hoạt động."
                 )
 
-            if self._active_engine_id is not None and self._active_engine_id != engine_id:
+            if force_reload and target.is_loaded():
+                self.unload(engine_id)
+            elif self._active_engine_id is not None and self._active_engine_id != engine_id:
                 self.unload(self._active_engine_id)
 
             try:
@@ -189,7 +201,7 @@ class EngineLifecycleManager:
                 return
             try:
                 engine.unload()
-            except Exception:
+            except Exception:  # noqa: BLE001 - shutdown must continue for any backend error
                 logger.exception("Không thể unload engine", engine_id=engine_id)
             finally:
                 if self._active_engine_id == engine_id:

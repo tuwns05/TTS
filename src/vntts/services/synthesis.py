@@ -7,9 +7,20 @@ import time
 import numpy as np
 from loguru import logger
 
-from vntts.db.models import AudioEffects, SynthesisRequest, SynthesisResult, VoiceInfo
+from vntts.db.models import (
+    AudioEffects,
+    EngineRuntimeInfo,
+    SynthesisRequest,
+    SynthesisResult,
+    VoiceInfo,
+)
 from vntts.engines.factory import EngineFactory, EngineLifecycleManager, EngineRegistry
-from vntts.utils.exceptions import AppError, EngineLoadError, SynthesisError, ValidationError
+from vntts.utils.exceptions import (
+    AppError,
+    EngineLoadError,
+    SynthesisError,
+    ValidationError,
+)
 
 
 def _phase_vocoder(spec: np.ndarray, rate: float, hop_length: int) -> np.ndarray:
@@ -130,23 +141,55 @@ class SynthesizeSpeech:
         self._device = device
         self._lifecycle = lifecycle or EngineLifecycleManager(factory)
 
-    def prepare_engine(self, engine_id: str) -> list[VoiceInfo]:
+    def prepare_engine(
+        self,
+        engine_id: str,
+        device: str | None = None,
+        force_reload: bool = False,
+    ) -> list[VoiceInfo]:
         """Create and load an engine if needed, then return its voices."""
 
         if not self._registry.contains(engine_id):
             self._factory.create(engine_id)
+        requested_device = device or self._device
         engine = self._lifecycle.get(engine_id)
-        if not engine.is_loaded() or self._lifecycle.active_engine_id != engine_id:
+        if (
+            force_reload
+            or not engine.is_loaded()
+            or self._lifecycle.active_engine_id != engine_id
+        ):
             logger.info("Bắt đầu load engine", engine_id=engine_id)
             try:
-                engine = self._lifecycle.activate(engine_id, self._device)
+                engine = self._lifecycle.activate(
+                    engine_id,
+                    requested_device,
+                    force_reload=force_reload,
+                )
             except AppError:
                 raise
             except Exception as exc:
                 logger.exception("Load engine thất bại", engine_id=engine_id)
                 raise EngineLoadError(f"Không thể tải engine '{engine_id}'.") from exc
             logger.info("Load engine thành công", engine_id=engine_id)
+        self._device = requested_device
         return engine.list_voices()
+
+    def runtime_info(self, engine_id: str) -> EngineRuntimeInfo | None:
+        """Return the backend and device currently active for an engine."""
+
+        engine = self._lifecycle.get(engine_id)
+        if self._lifecycle.active_engine_id != engine_id or not engine.is_loaded():
+            return None
+        info = engine.runtime_info
+        if info is not None:
+            return info
+        return EngineRuntimeInfo(
+            engine_id=engine.engine_info.engine_id,
+            display_name=engine.engine_info.display_name,
+            device="cpu",
+            backend="native",
+            device_name="CPU",
+        )
 
     def execute(self, request: SynthesisRequest) -> SynthesisResult:
         """Run synthesis without logging the user's text payload."""

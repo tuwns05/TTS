@@ -140,7 +140,7 @@ def _write_manifest(bundle_root: Path) -> None:
         "schema_version": 1,
         "engine_id": "vieneu-v3",
         "sdk_version": SDK_VERSION,
-        "backend": "onnx-int8-cpu",
+        "backend": "pytorch-cuda+onnx-int8-cpu",
         "hub_cache": "hub",
         "repositories": [
             {"repo_id": item.repo_id, "revision": item.revision}

@@ -18,6 +18,7 @@ from vntts.db.models import (
     VIENEU_V2_ENGINE_ID,
     VIENEU_V3_ENGINE_ID,
     EngineInfo,
+    EngineRuntimeInfo,
     EngineSynthesisOptions,
     SynthesisResult,
     VoiceInfo,
@@ -87,7 +88,7 @@ def _cuda_available() -> bool:
     try:
         torch = importlib.import_module("torch")
         return bool(torch.cuda.is_available())
-    except Exception:
+    except Exception:  # noqa: BLE001 - CUDA probing must safely degrade to CPU
         return False
 
 
@@ -323,6 +324,7 @@ class VieNeuV3Engine(BaseTTSEngine):
         self._injected_factory = sdk_factory is not None
         self._runtime: _VieNeuRuntime | None = None
         self._voices: list[VoiceInfo] = []
+        self._runtime_info: EngineRuntimeInfo | None = None
 
     @property
     def engine_info(self) -> EngineInfo:
@@ -331,6 +333,10 @@ class VieNeuV3Engine(BaseTTSEngine):
     @property
     def capabilities(self) -> EngineCapabilities:
         return self.CAPABILITIES
+
+    @property
+    def runtime_info(self) -> EngineRuntimeInfo | None:
+        return self._runtime_info
 
     def is_available(self) -> bool:
         sdk_exists = self._injected_factory or _sdk_is_installed()
@@ -394,38 +400,71 @@ class VieNeuV3Engine(BaseTTSEngine):
                 if self._tokenizer_path is not None and self._tokenizer_path.is_dir()
                 else VIENEU_V3_TOKENIZER_REPOSITORY
             )
-        try:
-            runtime = self._sdk_factory(
-                mode="v3turbo",
-                backbone_repo=model_source,
-                moss_tokenizer=tokenizer_source,
-                device=resolved_device,
-                backend=self._backend,
-            )
-            raw_voices = runtime.list_preset_voices()
-            voices = [
-                VoiceInfo(
-                    voice_id=str(voice_id),
-                    display_name=_voice_display_name(description, voice_id),
-                )
-                for description, voice_id in raw_voices
-            ]
-        except Exception as exc:
-            close = locals().get("runtime")
-            close_method = getattr(close, "close", None)
-            if callable(close_method):
-                close_method()
-            raise EngineLoadError("Không thể khởi tạo VieNeu-TTS v3-Turbo.") from exc
+        selected_backend = self._backend_for_device(resolved_device)
+        attempts = [(resolved_device, selected_backend)]
+        if device == "auto" and resolved_device == "cuda":
+            attempts.append(("cpu", "onnx"))
 
-        if not voices:
-            runtime.close()
-            raise EngineLoadError("VieNeu v3 không cung cấp giọng dựng sẵn nào.")
-        self._runtime = runtime
-        self._voices = voices
+        gpu_failure: Exception | None = None
+        for attempt_device, attempt_backend in attempts:
+            runtime = None
+            try:
+                runtime = self._sdk_factory(
+                    mode="v3turbo",
+                    backbone_repo=model_source,
+                    moss_tokenizer=tokenizer_source,
+                    device=attempt_device,
+                    backend=attempt_backend,
+                )
+                raw_voices = runtime.list_preset_voices()
+                voices = [
+                    VoiceInfo(
+                        voice_id=str(voice_id),
+                        display_name=_voice_display_name(description, voice_id),
+                    )
+                    for description, voice_id in raw_voices
+                ]
+                if not voices:
+                    raise EngineLoadError(
+                        "VieNeu v3 không cung cấp giọng dựng sẵn nào."
+                    )
+                fallback_reason = None
+                if gpu_failure is not None:
+                    fallback_reason = (
+                        "Không thể khởi tạo GPU; đã tự chuyển sang CPU."
+                    )
+                self._runtime = runtime
+                self._voices = voices
+                self._runtime_info = EngineRuntimeInfo(
+                    engine_id=self.INFO.engine_id,
+                    display_name=self.INFO.display_name,
+                    device=attempt_device,
+                    backend=attempt_backend,
+                    device_name=self._device_name(attempt_device),
+                    fallback_reason=fallback_reason,
+                )
+                return
+            except Exception as exc:
+                close_method = getattr(runtime, "close", None)
+                if callable(close_method):
+                    close_method()
+                if attempt_device == "cuda" and len(attempts) > 1:
+                    gpu_failure = exc
+                    logger.opt(exception=exc).warning(
+                        "Không thể load VieNeu v3 trên GPU; fallback CPU"
+                    )
+                    self._release_cuda_cache()
+                    continue
+                raise EngineLoadError(
+                    "Không thể khởi tạo VieNeu-TTS v3-Turbo "
+                    f"trên {attempt_device.upper()}."
+                ) from exc
 
     def unload(self) -> None:
         runtime, self._runtime = self._runtime, None
         self._voices = []
+        previous_device = self._runtime_info.device if self._runtime_info else None
+        self._runtime_info = None
         if runtime is not None:
             try:
                 runtime.close()
@@ -433,6 +472,8 @@ class VieNeuV3Engine(BaseTTSEngine):
                 raise EngineLoadError(
                     "Không thể giải phóng VieNeu-TTS v3-Turbo."
                 ) from exc
+        if previous_device == "cuda":
+            self._release_cuda_cache()
 
     def is_loaded(self) -> bool:
         return self._runtime is not None
@@ -558,4 +599,32 @@ class VieNeuV3Engine(BaseTTSEngine):
             raise EngineLoadError(f"Thiết bị '{requested}' không được hỗ trợ.")
         if requested == "auto":
             return "cuda" if _cuda_available() else "cpu"
+        if requested == "cuda" and not _cuda_available():
+            raise EngineLoadError(
+                "Không tìm thấy GPU NVIDIA/CUDA khả dụng. Hãy chọn CPU."
+            )
         return requested
+
+    def _backend_for_device(self, device: str) -> str:
+        if self._backend == "auto":
+            return "pytorch" if device == "cuda" else "onnx"
+        return self._backend
+
+    @staticmethod
+    def _device_name(device: str) -> str:
+        if device != "cuda":
+            return "CPU"
+        try:
+            torch = importlib.import_module("torch")
+            return str(torch.cuda.get_device_name(torch.cuda.current_device()))
+        except Exception:  # noqa: BLE001 - device labeling must not fail a loaded engine
+            return "NVIDIA CUDA"
+
+    @staticmethod
+    def _release_cuda_cache() -> None:
+        try:
+            torch = importlib.import_module("torch")
+            if bool(torch.cuda.is_available()):
+                torch.cuda.empty_cache()
+        except Exception:  # noqa: BLE001 - cache cleanup is best-effort during unload
+            return
