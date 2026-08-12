@@ -7,8 +7,10 @@ __pycache__/
 # Local models and user-generated runtime data
 models/
 data/
+resources/models/vieneu-v3/
 
 # Build artifacts
 build/
 dist/
-
+.venv-build/
+release/

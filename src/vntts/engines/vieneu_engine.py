@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import importlib.metadata
 import importlib.util
 import re
 import warnings
@@ -11,6 +12,7 @@ from pathlib import Path
 from typing import Protocol
 
 import numpy as np
+from loguru import logger
 
 from vntts.db.models import (
     VIENEU_V2_ENGINE_ID,
@@ -24,6 +26,10 @@ from vntts.engines.base import (
     BaseTTSEngine,
     EngineCapabilities,
     to_mono_float32,
+)
+from vntts.engines.model_bundle import (
+    configure_offline_huggingface_cache,
+    validate_vieneu_v3_bundle,
 )
 from vntts.utils.exceptions import (
     EngineLoadError,
@@ -299,6 +305,7 @@ class VieNeuV3Engine(BaseTTSEngine):
         model_path: Path | None = None,
         *,
         tokenizer_path: Path | None = None,
+        bundle_path: Path | None = None,
         allow_download: bool = False,
         backend: str = "auto",
         sample_rate: int = 48_000,
@@ -309,6 +316,7 @@ class VieNeuV3Engine(BaseTTSEngine):
             tokenizer_path.resolve() if tokenizer_path is not None else None
         )
         self._allow_download = allow_download
+        self._bundle_path = bundle_path.resolve() if bundle_path is not None else None
         self._backend = backend
         self._sample_rate = sample_rate
         self._sdk_factory = sdk_factory or _default_vieneu_factory
@@ -326,6 +334,12 @@ class VieNeuV3Engine(BaseTTSEngine):
 
     def is_available(self) -> bool:
         sdk_exists = self._injected_factory or _sdk_is_installed()
+        if self._bundle_path is not None:
+            return (
+                sdk_exists
+                and (self._bundle_path / "manifest.json").is_file()
+                and (self._bundle_path / "hub").is_dir()
+            )
         model_available = self._allow_download or (
             self._model_path is not None and self._model_path.is_dir()
         )
@@ -337,7 +351,24 @@ class VieNeuV3Engine(BaseTTSEngine):
     def load(self, device: str) -> None:
         if self._runtime is not None:
             return
-        if not self._allow_download:
+        bundle_info = None
+        if self._bundle_path is not None:
+            bundle_info = validate_vieneu_v3_bundle(
+                self._bundle_path,
+                verify_hashes=True,
+            )
+            configure_offline_huggingface_cache(bundle_info.hub_cache)
+            if not self._injected_factory:
+                try:
+                    installed_sdk = importlib.metadata.version("vieneu")
+                except importlib.metadata.PackageNotFoundError as exc:
+                    raise EngineLoadError("Thiếu SDK vieneu trong bản đóng gói.") from exc
+                if installed_sdk != bundle_info.sdk_version:
+                    raise EngineLoadError(
+                        "SDK vieneu không khớp manifest model "
+                        f"({installed_sdk} != {bundle_info.sdk_version})."
+                    )
+        elif not self._allow_download:
             missing = []
             if self._model_path is None or not self._model_path.is_dir():
                 missing.append("model")
@@ -349,16 +380,20 @@ class VieNeuV3Engine(BaseTTSEngine):
                 )
 
         resolved_device = self._resolve_device(device)
-        model_source = (
-            str(self._model_path)
-            if self._model_path is not None and self._model_path.is_dir()
-            else VIENEU_V3_REPOSITORY
-        )
-        tokenizer_source = (
-            str(self._tokenizer_path)
-            if self._tokenizer_path is not None and self._tokenizer_path.is_dir()
-            else VIENEU_V3_TOKENIZER_REPOSITORY
-        )
+        if bundle_info is not None:
+            model_source = VIENEU_V3_REPOSITORY
+            tokenizer_source = VIENEU_V3_TOKENIZER_REPOSITORY
+        else:
+            model_source = (
+                str(self._model_path)
+                if self._model_path is not None and self._model_path.is_dir()
+                else VIENEU_V3_REPOSITORY
+            )
+            tokenizer_source = (
+                str(self._tokenizer_path)
+                if self._tokenizer_path is not None and self._tokenizer_path.is_dir()
+                else VIENEU_V3_TOKENIZER_REPOSITORY
+            )
         try:
             runtime = self._sdk_factory(
                 mode="v3turbo",
@@ -474,6 +509,9 @@ class VieNeuV3Engine(BaseTTSEngine):
         except ValidationError:
             raise
         except Exception as exc:
+            logger.opt(exception=exc).error(
+                "VieNeu-TTS v3-Turbo synthesis failed"
+            )
             raise SynthesisError(
                 "VieNeu-TTS v3-Turbo không thể tổng hợp giọng nói."
             ) from exc

@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 from loguru import logger
 
+import vntts.config.settings as settings_module
 from vntts.config.settings import Settings, load_settings
 from vntts.utils.logger import configure_logging
 
@@ -43,6 +44,22 @@ def test_production_defaults_to_bundled_vieneu_v3(
     result = load_settings(create_directories=False)
 
     assert result.tts.default_engine == "vieneu-v3"
+
+
+def test_frozen_build_defaults_to_production_and_meipass(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    frozen_root = tmp_path / "frozen"
+    monkeypatch.setattr(settings_module.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(settings_module.sys, "_MEIPASS", str(frozen_root), raising=False)
+    monkeypatch.delenv("VNTTS_ENVIRONMENT", raising=False)
+    monkeypatch.setenv("VNTTS_APP_DATA_DIR", str(tmp_path / "app-data"))
+
+    result = load_settings(create_directories=False)
+
+    assert result.application.environment == "production"
+    assert result.paths.bundled_models_dir == (frozen_root / "resources/models").resolve()
 
 
 def test_logging_writes_rotating_file_without_payload(settings: Settings) -> None:

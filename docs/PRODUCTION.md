@@ -1,111 +1,142 @@
-# Hướng dẫn Production
+# Đóng gói production Windows
 
-> Repository chưa sẵn sàng production cho đến khi model bundled, dependency lock và bản cài đặt offline được kiểm chứng trên máy Windows sạch. Không phân phối source checkout hoặc `.venv` cho người dùng cuối.
+## Phạm vi bản production hiện tại
 
-## 1. Release gate
+Bản này chỉ đăng ký **VieNeu-TTS v3 Turbo** và đóng gói các chức năng đang có:
 
-Trước khi đóng gói phải hoàn tất:
+- tổng hợp giọng preset, phong cách đọc và voice cloning;
+- nhập TXT/SRT/DOCX/PDF;
+- phát, tạm dừng, dừng và tua audio;
+- xuất WAV/MP3;
+- lưu hồ sơ giọng trong `%LOCALAPPDATA%\VietnameseTTSDesktop`.
 
-- Integration test ba adapter với model/runtime đã pin; lifecycle, load failure và fallback đã test trên máy sạch.
-- TXT/DOCX/PDF có text, chunking, DSP và Play/Pause/Stop.
-- Model Manager cho v2/Kokoro: xác nhận tải, tiến độ/hủy, checksum, phát hiện hỏng và xóa.
-- Bundle v3 cùng codec/runtime/license để first-run offline.
-- Kiểm tra license code, dependency, model và voicepack.
-- Chọn và kiểm chứng PyInstaller hoặc Nuitka.
-- Unit, UI, integration và offline test đều pass.
+Không đăng ký, tải hoặc fallback sang VieNeu v2/Kokoro. Production luôn dùng
+ONNX int8 trên CPU để chạy được trên Windows x64 không có GPU. Model được load
+trên worker sau khi cửa sổ mở; UI hiển thị trạng thái kiểm tra/load model.
 
-Build chưa đạt các mục trên chỉ được gắn nhãn `development/internal`.
+## Những thứ đã chuẩn bị
 
-## 2. Môi trường build
+- PyInstaller `onedir` spec tại `packaging/vntts.spec`.
+- Script build Windows tại `scripts/build_production.ps1`.
+- Inno Setup script tùy chọn tại `packaging/windows/installer.iss`.
+- Dependency đầu vào đã pin và lock đầy đủ SHA-256 tại
+  `requirements/production.in` và `requirements/production.lock`.
+- Script lấy ba snapshot model đã pin tại `scripts/prepare_vieneu_v3.py`.
+- Bundle local có manifest, size và SHA-256 cho từng tệp.
+- Runtime kiểm tra checksum trước khi load và kiểm tra `vieneu==3.2.4`.
+- Hugging Face/Transformers bị ép offline, tắt telemetry và không có remote fallback.
+- Frozen build tự chuyển sang môi trường `production` và đọc model từ `_internal`.
+- Artifact portable ZIP được tạo kèm checksum SHA-256.
 
-- Windows x64 sạch hoặc CI runner cô lập.
-- Python 3.11 đúng version release.
-- Build từ commit/tag sạch.
-- Dependency lock có version và hash.
-- Model/runtime lấy từ revision đã pin, không lấy từ cache developer.
+Model binary không commit vào Git. Máy build phải chạy script chuẩn bị model;
+bundle hiện hành nằm tại `resources/models/vieneu-v3` và được PyInstaller đưa
+vào artifact.
 
-Ghi lại trong build metadata:
+## Yêu cầu máy build
 
-```text
-App/Git version
-Python, Qt/PySide6 version
-Dependency lock checksum
-Engine/model revision
-Build tool/version
-```
+- Windows 10/11 x64 sạch.
+- Python 3.11 x64 có lệnh `py -3.11`.
+- Tối thiểu 15 GB trống để chứa wheel cache, venv, build và artifact.
+- Internet chỉ cần khi tạo model bundle hoặc cài dependency lần đầu.
+- Inno Setup 6 chỉ cần nếu muốn tạo file `setup.exe`.
 
-## 3. Cấu hình production
+Không build từ `.venv` phát triển. Script dùng `.venv-build` riêng.
+
+## 1. Chuẩn bị model thật
+
+Nếu máy đang có đủ snapshot trong Hugging Face cache:
 
 ```powershell
-$env:VNTTS_ENVIRONMENT = "production"
-$env:VNTTS_LOG_LEVEL = "INFO"
+.\.venv\Scripts\python.exe .\scripts\prepare_vieneu_v3.py --local-files-only
 ```
 
-- Không hard-code đường dẫn máy build.
-- Dữ liệu ghi được nằm trong `%LOCALAPPDATA%\VietnameseTTSDesktop`.
-- V3 bundled nằm trong vùng read-only của installer; v2/Kokoro nằm trong app-data dưới cùng một model root và được lưu theo thư mục con riêng của engine (`vieneu-v2/`, `kokoro-vi/`). Khi tải model mới, phải đặt vào thư mục con đó trong root hiện có.
-- Chọn `vieneu-v3` mặc định và load local bằng worker.
-- Không bật console log, `diagnose` hoặc traceback chứa dữ liệu nhạy cảm.
-- Không bundle model cache, log, text, audio hoặc mẫu giọng của developer.
+Nếu cache chưa có, cho phép script tải đúng revision đã pin:
 
-Chi tiết model: [MODEL_DISTRIBUTION.md](MODEL_DISTRIBUTION.md).
+```powershell
+.\.venv\Scripts\python.exe .\scripts\prepare_vieneu_v3.py
+```
 
-## 4. Pipeline build/release
+Kiểm tra lại toàn bộ checksum:
 
-1. Tạo môi trường Python 3.11 sạch.
-2. Cài dependency từ lock có hash.
-3. Chuẩn bị snapshot v3, codec/runtime và manifest/checksum.
-4. Chạy unit, UI và integration test.
-5. Build bằng script version-controlled.
-6. Xác minh Qt plugin, native DLL, YAML/QSS, model và license.
-7. Cài trên Windows sạch không có Python/Hugging Face cache.
-8. Chặn mạng; xác nhận v3 load và tổng hợp ngay lần đầu.
-9. Xác nhận v2/Kokoro không tự tải và chỉ tải sau consent.
-10. Ký artifact nếu phát hành công khai; tạo checksum và release notes.
+```powershell
+.\.venv\Scripts\python.exe .\scripts\prepare_vieneu_v3.py --validate-only
+```
 
-Chưa cung cấp lệnh PyInstaller/Nuitka cho đến khi repository có script build đã được kiểm chứng.
+Không copy thủ công model từ cache khác và không sửa `manifest.json`.
 
-## 5. Kiểm thử phát hành
+## 2. Chạy release gate
 
-| Nhóm | Điều kiện |
-|---|---|
-| Startup | Không cần Python/Internet; v3 load nền, UI responsive. |
-| Engine | Load/unload/chuyển engine; fallback có lý do; không crash khi thiếu GPU. |
-| Offline | Không network khi startup/load/synthesize v3. |
-| Optional models | v2/Kokoro chỉ tải sau consent; checksum và tải dở được xử lý. |
-| Documents | TXT encoding, DOCX, PDF text, file lớn, cảnh báo PDF scan. |
-| Audio | Effects chỉ áp dụng một lần; Play/Pause/Stop/cancel ổn định. |
-| Cloning | Chỉ bật theo capability; profile gắn engine và xóa được. |
-| Privacy | Không payload trong log/network; không telemetry mặc định. |
-| Upgrade | Không mất model, cấu hình hoặc hồ sơ giọng. |
-| Uninstall | Không xóa dữ liệu người dùng nếu chưa xác nhận. |
+```powershell
+.\.venv\Scripts\python.exe -m pytest -q
+.\.venv\Scripts\python.exe -m ruff check src tests scripts
+git status --short
+```
 
-Crash startup, mất dữ liệu, network ngoài consent hoặc không chạy offline là release blocker.
+Chỉ build từ commit/tag đã xác định. Ruff hiện có một số cảnh báo legacy ngoài
+phạm vi production; không được bỏ qua lỗi mới trong các tệp production vừa sửa.
 
-## 6. Artifact và vận hành
+## 3. Build portable production
 
-Mỗi release cần:
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\build_production.ps1 -RecreateEnvironment
+```
 
-- Version/tag, release notes, artifact checksum và chữ ký nếu áp dụng.
-- Danh sách engine/model tương thích và yêu cầu hệ thống đã kiểm chứng.
-- License/third-party notices.
-- Hướng dẫn v3 offline, tải v2/Kokoro và xóa dữ liệu/voice profile.
-- Artifact ổn định trước đó để rollback.
+Script sẽ:
 
-Rollback executable phải bảo toàn dữ liệu người dùng và chỉ thực hiện migration có đường quay lại an toàn. Log hỗ trợ chỉ được upload khi người dùng chủ động cung cấp.
+1. tạo `.venv-build` bằng Python 3.11;
+2. cài dependency từ lock bằng `--require-hashes`;
+3. xác minh manifest/checksum model;
+4. chạy PyInstaller ở chế độ `onedir`;
+5. kiểm tra EXE và model manifest trong artifact;
+6. tạo ZIP và file SHA-256 trong `release`.
 
-## 7. Checklist production
+Kết quả chính:
 
-- [ ] Commit/tag và version chính xác.
-- [ ] Dependency/model license đã duyệt.
-- [ ] Dependency lock, model revision và checksum đã lưu.
-- [ ] Unit/UI/integration test pass.
-- [ ] Build/cài đặt trên Windows sạch thành công.
-- [ ] First-run v3 offline pass, không có Hugging Face cache.
-- [ ] GPU failure có v3 CPU fallback nếu bản build công bố hỗ trợ.
-- [ ] V2/Kokoro không tự tải.
-- [ ] Không có payload nhạy cảm trong artifact hoặc log.
-- [ ] Upgrade/rollback/uninstall đã kiểm tra.
-- [ ] Artifact có checksum, notices và release notes.
+```text
+dist/GPHI-TTS/GPHI-TTS.exe
+release/GPHI-TTS-0.1.0-win-x64.zip
+release/GPHI-TTS-0.1.0-win-x64.zip.sha256
+```
 
-Chỉ gắn nhãn production khi toàn bộ mục bắt buộc đạt yêu cầu.
+Phải phân phối cả thư mục `GPHI-TTS`; không được lấy riêng file EXE.
+
+## 4. Tạo installer tùy chọn
+
+Cài Inno Setup 6 và bảo đảm `iscc.exe` có trong `PATH`, sau đó chạy:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\build_production.ps1 `
+  -BuildInstaller
+```
+
+Installer được tạo trong `release`. Ký số `setup.exe` và ZIP nếu phát hành công
+khai; script hiện chưa chứa certificate/signing key.
+
+## 5. Smoke test offline bắt buộc
+
+Thực hiện trên Windows sạch, không cài Python và không có Hugging Face cache:
+
+1. Tắt Wi-Fi/rút mạng trước khi mở ứng dụng.
+2. Mở `GPHI-TTS.exe`; cửa sổ phải hiện ngay và báo đang kiểm tra/load model.
+3. Chờ trạng thái `Sẵn sàng`; danh sách giọng preset phải xuất hiện.
+4. Tổng hợp một câu; xác nhận audio 48 kHz phát được và xuất WAV/MP3 được.
+5. Thử nhập ít nhất một TXT và một DOCX/PDF có text.
+6. Nếu phát hành voice cloning, tạo hồ sơ từ audio mẫu rồi tổng hợp thử.
+7. Dùng công cụ giám sát mạng để xác nhận tiến trình không gửi request.
+8. Đóng/mở lại ứng dụng; dữ liệu người dùng vẫn nằm trong `%LOCALAPPDATA%`.
+
+Crash, treo UI trong lúc load, thiếu giọng preset, request mạng hoặc không tổng
+hợp được khi offline đều là release blocker.
+
+## 6. Trước khi phát hành công khai
+
+- Cập nhật version ở `pyproject.toml`, build script và Inno script cùng lúc.
+- Hoàn tất license của chính ứng dụng và inventory license của toàn bộ wheel.
+- Giữ `packaging/licenses/THIRD_PARTY_NOTICES.txt` trong artifact.
+- Viết release notes, yêu cầu Windows x64 và dung lượng cài đặt thực tế.
+- Lưu artifact phiên bản trước để rollback.
+- Ký số artifact bằng certificate của đơn vị phát hành.
+
+Model v3 và VieNeu SDK dùng Apache-2.0; model card yêu cầu giữ attribution cho
+project/model package. MOSS và toàn bộ dependency vẫn cần được chủ phát hành
+duyệt license riêng trước khi phân phối công khai.

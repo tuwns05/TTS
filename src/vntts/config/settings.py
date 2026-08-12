@@ -14,7 +14,6 @@ import yaml
 from vntts.db.models import HardwareRecommendationSettings, TierSettings
 from vntts.utils.exceptions import ConfigurationError
 
-
 _SAFE_DEFAULTS: dict[str, object] = {
     "application": {"name": "Vietnamese TTS Desktop", "environment": "development"},
     "paths": {
@@ -115,7 +114,12 @@ def _installation_root() -> Path:
     """Return the read-only application root in source and frozen builds."""
 
     if getattr(sys, "frozen", False):
-        return Path(sys.executable).resolve().parent
+        frozen_root = getattr(sys, "_MEIPASS", None)
+        return (
+            Path(frozen_root).resolve()
+            if frozen_root
+            else Path(sys.executable).resolve().parent
+        )
     return Path(__file__).resolve().parents[3]
 
 
@@ -193,7 +197,9 @@ def load_settings(config_path: Path | None = None, *, create_directories: bool =
     )
 
     application_name = app.get("name")
-    environment = os.getenv("VNTTS_ENVIRONMENT") or app.get("environment")
+    environment = os.getenv("VNTTS_ENVIRONMENT")
+    if environment is None:
+        environment = "production" if getattr(sys, "frozen", False) else app.get("environment")
     default_engine = os.getenv("VNTTS_DEFAULT_ENGINE")
     if default_engine is None:
         default_engine = (

@@ -1,5 +1,9 @@
 # Ứng dụng TTS Desktop Offline Tiếng Việt
 
+> Phạm vi production hiện tại chỉ gồm VieNeu-TTS v3 Turbo chạy offline bằng
+> ONNX/CPU. V2 và Kokoro được giữ cho giai đoạn phát triển sau, không được đăng
+> ký hoặc đóng vào artifact production hiện tại.
+
 Ứng dụng desktop chuyển văn bản tiếng Việt thành giọng nói trên máy người dùng. Văn bản, waveform và mẫu giọng được xử lý cục bộ; ứng dụng không gửi nội dung người dùng lên máy chủ trong quá trình tổng hợp offline.
 
 ## Chức năng chính

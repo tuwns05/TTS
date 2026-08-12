@@ -68,7 +68,9 @@ class TaskWorker(QRunnable, Generic[P, R]):
             else:
                 self.signals.result.emit(result)
         except AppError as exc:
-            logger.warning("Tác vụ nền thất bại: {}", type(exc).__name__)
+            logger.opt(exception=exc).warning(
+                "Tác vụ nền thất bại: {}", type(exc).__name__
+            )
             self.signals.error.emit(str(exc))
         except Exception:
             logger.exception("Lỗi kỹ thuật không mong đợi trong tác vụ nền")

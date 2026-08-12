@@ -3,23 +3,26 @@
 from __future__ import annotations
 
 import sys
+import wave
 from collections.abc import Sequence
+from pathlib import Path
 
+import numpy as np
 from loguru import logger
 from PySide6.QtWidgets import QApplication
 
 from vntts.config.settings import Settings, load_settings
 from vntts.config.theme import THEME, build_stylesheet, get_system_font
+from vntts.db.models import EngineSynthesisOptions
 from vntts.engines.factory import EngineFactory, EngineLifecycleManager, EngineRegistry
-from vntts.engines.kokoro_engine import KokoroVIEngine
-from vntts.engines.vieneu_engine import VieNeuV2Engine, VieNeuV3Engine
-from vntts.services.hardware import EngineRecommendationService, HardwareDetector
+from vntts.engines.vieneu_engine import VieNeuV3Engine
 from vntts.services.synthesis import SynthesizeSpeech
+from vntts.services.playback import PlaybackService
 from vntts.services.voice_enrollment import VoiceEnrollmentService
 from vntts.services.voice_profiles import VoiceProfileStore
 from vntts.ui.compose_view import MainViewModel
-from vntts.ui.main_window import MainWindow
 from vntts.ui.fonts import load_app_fonts
+from vntts.ui.main_window import MainWindow
 from vntts.utils.logger import configure_logging, shutdown_logging
 
 
@@ -37,25 +40,16 @@ def build_application(argv: Sequence[str] | None = None) -> tuple[QApplication, 
 
     registry = EngineRegistry()
     bundled_v3 = settings.paths.bundled_models_dir / "vieneu-v3"
-    optional_v2 = settings.paths.models_dir / "vieneu-v2"
-    optional_kokoro = settings.paths.models_dir / "kokoro-vi"
-
     is_production = settings.application.environment.strip().lower() == "production"
-    local_v3 = bundled_v3 if bundled_v3.is_dir() else None
+    is_model_bundle = (bundled_v3 / "manifest.json").is_file()
+    local_v3 = bundled_v3 if bundled_v3.is_dir() and not is_model_bundle else None
     local_v3_tokenizer = bundled_v3 / "moss-tokenizer"
-    v3_provider = lambda: VieNeuV3Engine(  # noqa: E731
+    v3_provider = lambda: VieNeuV3Engine(
         local_v3,
         tokenizer_path=(local_v3_tokenizer if local_v3_tokenizer.is_dir() else None),
+        bundle_path=(bundled_v3 if is_model_bundle else None),
         allow_download=not is_production,
-    )
-    v2_provider = lambda: VieNeuV2Engine(  # noqa: E731
-        optional_v2 / "backbone",
-        optional_v2 / "codec",
-    )
-    kokoro_provider = lambda: KokoroVIEngine(  # noqa: E731
-        optional_kokoro / "kokoro_vi.pth",
-        optional_kokoro / "config.json",
-        optional_kokoro / "voicepacks",
+        backend=("onnx" if is_production else "auto"),
     )
 
     registry.register(
@@ -64,13 +58,6 @@ def build_application(argv: Sequence[str] | None = None) -> tuple[QApplication, 
         VieNeuV3Engine.INFO,
         VieNeuV3Engine.CAPABILITIES,
     )
-    for provider, info, capabilities in (
-        (v2_provider, VieNeuV2Engine.INFO, VieNeuV2Engine.CAPABILITIES),
-        (kokoro_provider, KokoroVIEngine.INFO, KokoroVIEngine.CAPABILITIES),
-    ):
-        if provider().is_available():
-            registry.register(info.engine_id, provider, info, capabilities)
-
     factory = EngineFactory(registry)
     lifecycle = EngineLifecycleManager(factory)
     use_case = SynthesizeSpeech(
@@ -78,17 +65,13 @@ def build_application(argv: Sequence[str] | None = None) -> tuple[QApplication, 
         registry,
         lifecycle=lifecycle,
     )
-    hardware = HardwareDetector().detect()
-    recommendation = EngineRecommendationService(
-        settings.hardware_recommendation
-    ).recommend(hardware)
     voice_profile_store = VoiceProfileStore(settings.paths.data_dir)
     voice_enrollment = VoiceEnrollmentService(use_case, voice_profile_store)
     view_model = MainViewModel(
         registry,
         use_case,
         settings,
-        recommendation,
+        None,
         voice_enrollment_service=voice_enrollment,
     )
     window = MainWindow(
@@ -109,9 +92,57 @@ def build_application(argv: Sequence[str] | None = None) -> tuple[QApplication, 
 def main() -> int:
     """Start the Qt event loop."""
 
+    if len(sys.argv) == 3 and sys.argv[1] == "--production-smoke":
+        return _run_production_smoke(Path(sys.argv[2]))
+
     application, window = build_application()
     window.show()
     return application.exec()
+
+
+def _run_production_smoke(output_path: Path) -> int:
+    """Verify that the frozen artifact can load and synthesize real audio."""
+
+    settings = load_settings()
+    configure_logging(settings)
+    engine = VieNeuV3Engine(
+        bundle_path=settings.paths.bundled_models_dir / "vieneu-v3",
+        allow_download=False,
+        backend="onnx",
+    )
+    try:
+        engine.load("cpu")
+        voice = engine.list_voices()[0]
+        result = engine.synthesize(
+            "Xin chào, đây là bản kiểm tra đóng gói.",
+            EngineSynthesisOptions(voice_id=voice.voice_id),
+        )
+        pcm = np.rint(np.clip(result.audio, -1.0, 1.0) * 32_767).astype("<i2")
+        if pcm.size == 0:
+            raise RuntimeError("Smoke synthesis returned empty audio.")
+        destination = output_path.expanduser().resolve()
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        with wave.open(str(destination), "wb") as output:
+            output.setnchannels(1)
+            output.setsampwidth(2)
+            output.setframerate(result.sample_rate)
+            output.writeframes(pcm.tobytes())
+        destination.with_suffix(".mp3").write_bytes(
+            PlaybackService._encode_mp3(result)
+        )
+        logger.info(
+            "Production smoke synthesis succeeded",
+            samples=int(pcm.size),
+            sample_rate=result.sample_rate,
+        )
+        return 0
+    except Exception:
+        logger.exception("Production smoke synthesis failed")
+        return 1
+    finally:
+        if engine.is_loaded():
+            engine.unload()
+        shutdown_logging()
 
 
 if __name__ == "__main__":

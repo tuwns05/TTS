@@ -1,0 +1,24 @@
+GPHI-TTS third-party notices
+============================
+
+VieNeu SDK 3.2.4
+Source: https://github.com/pnnbao97/VieNeu-TTS
+License: Apache License 2.0
+
+VieNeu-TTS v3 Turbo model
+Source: https://huggingface.co/pnnbao-ump/VieNeu-TTS-v3-Turbo
+Revision: 75ff82a72f54d55ed389e1eeb12041d3c4bac7d4
+Author: Phạm Nguyễn Ngọc Bảo
+License: Apache License 2.0
+
+MOSS Audio Tokenizer Nano
+Source: https://huggingface.co/OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano
+Revision: 6aa02b01e445cc585582cf0ba480bc3ea6c8dd68
+
+MOSS Audio Tokenizer Nano ONNX
+Source: https://huggingface.co/OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano-ONNX
+Revision: ceff0d0749bfb3fa2d61149794ec6feef0d1e1ae
+
+This file records the model/runtime attribution used by this build. The release
+owner must complete a license inventory for all Python wheels before public
+distribution and must add the application's own license terms.

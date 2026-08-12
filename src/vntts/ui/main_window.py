@@ -527,7 +527,7 @@ class MainWindow(QMainWindow):
     def _state_changed(self, state: str) -> None:
         messages = {
             "idle": "Engine đã sẵn sàng.",
-            "loading_engine": "Đang tải engine...",
+            "loading_engine": "Đang kiểm tra và tải model VieNeu v3 Turbo...",
             "importing_document": "Đang đọc và trích xuất văn bản từ tệp...",
             "synthesizing": "Đang tạo giọng nói...",
             "enrolling_voice": "Đang rút và lưu đặc điểm giọng...",

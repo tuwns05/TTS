@@ -1,122 +1,43 @@
-# Phân phối model
+# Bundle model VieNeu v3 Turbo
 
-## 1. Chính sách
+Bản production hiện tại chỉ dùng VieNeu-TTS v3 Turbo. Không bundle hoặc tải
+VieNeu v2/Kokoro.
 
-| Engine | Phân phối | Startup production |
+## Snapshot đã pin
+
+| Repository | Revision | Mục đích |
 |---|---|---|
-| `vieneu-v3` | Bundled bắt buộc | Chọn mặc định, load local trong worker, không Internet. |
-| `vieneu-v2` | Tải tùy chọn | Chỉ tải qua Model Manager sau consent. |
-| `kokoro-vi` | Tải tùy chọn | Chỉ tải qua Model Manager sau consent. |
+| `pnnbao-ump/VieNeu-TTS-v3-Turbo` | `75ff82a72f54d55ed389e1eeb12041d3c4bac7d4` | Backbone PyTorch, ONNX int8, speaker encoder, denoiser |
+| `OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano` | `6aa02b01e445cc585582cf0ba480bc3ea6c8dd68` | Tokenizer/codec PyTorch |
+| `OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano-ONNX` | `ceff0d0749bfb3fa2d61149794ec6feef0d1e1ae` | Codec ONNX CPU |
 
-SDK VieNeu mặc định có thể tải model từ Hugging Face, nhưng hỗ trợ local path. Adapter production phải truyền local path và không fallback sang repo ID.
+SDK được pin ở `vieneu==3.2.4`. Production ép backend `onnx`/CPU.
 
-Nguồn chính thức:
-
-- [VieNeu SDK](https://docs.vieneu.io/docs/sdk/overview/)
-- [Local/custom models](https://docs.vieneu.io/docs/advanced/custom-models/)
-- [VieNeu-TTS v3-Turbo](https://huggingface.co/pnnbao-ump/VieNeu-TTS-v3-Turbo)
-
-## 2. Layout và manifest
+## Layout
 
 ```text
-installer/
-├── vntts.exe
-├── resources/models/vieneu-v3/
-│   ├── manifest.json
-│   ├── update/
-│   ├── onnx_int8/
-│   ├── moss-tokenizer/
-│   ├── voices/
-│   └── runtime-assets/
-└── licenses/
-    ├── VieNeu-TTS-v3-Turbo-LICENSE.txt
-    └── THIRD_PARTY_NOTICES.txt
-
-%LOCALAPPDATA%\VietnameseTTSDesktop\models\
-├── vieneu-v2\
-│   ├── backbone\
-│   └── codec\
-└── kokoro-vi\
-    ├── kokoro_vi.pth
-    ├── config.json
-    └── voicepacks\*.pt
+resources/models/vieneu-v3/
+├── manifest.json
+└── hub/
+    ├── models--pnnbao-ump--VieNeu-TTS-v3-Turbo/
+    ├── models--OpenMOSS-Team--MOSS-Audio-Tokenizer-Nano/
+    └── models--OpenMOSS-Team--MOSS-Audio-Tokenizer-Nano-ONNX/
 ```
 
-Bundled v3 là read-only và không được Model Manager xóa. Model tùy chọn nằm trong app-data dưới cùng một model root, mỗi engine có thư mục con riêng (`vieneu-v2/`, `kokoro-vi/`). Khi tải model mới, Model Manager phải tạo/cập nhật thư mục con đó trong root hiện có, không tạo thư mục lẻ ở ngoài root.
+Đây là Hugging Face cache tối giản, chỉ chứa các tệp cần cho runtime. Runtime
+đặt `HF_HUB_CACHE` vào thư mục này và bật `HF_HUB_OFFLINE=1`, do đó SDK vẫn dùng
+API chính thức nhưng không thể tải hoặc fallback ra mạng.
 
-Manifest v3 tối thiểu:
+`manifest.json` ghi revision, kích thước và SHA-256 từng tệp. Checksum được kiểm
+tra trên worker trước khi model load. Bundle sai hoặc thiếu tệp sẽ báo lỗi thay
+vì tự tải lại.
 
-```json
-{
-  "schema_version": 1,
-  "engine_id": "vieneu-v3",
-  "model_version": "<pinned-version>",
-  "source_revision": "<commit-sha>",
-  "license": "Apache-2.0",
-  "components": ["update", "onnx_int8", "moss-tokenizer", "voices", "runtime-assets"],
-  "files": [{"path": "<relative>", "size": 0, "sha256": "<sha256>"}]
-}
+## Tạo và xác minh
+
+```powershell
+.\.venv\Scripts\python.exe .\scripts\prepare_vieneu_v3.py
+.\.venv\Scripts\python.exe .\scripts\prepare_vieneu_v3.py --validate-only
 ```
 
-- Pin commit SHA, không build từ `main`.
-- Path phải relative và nằm trong model root.
-- Startup kiểm tra manifest/file bắt buộc; build/Repair kiểm tra checksum đầy đủ.
-- Thiếu/hỏng v3 → báo Repair, không tự tải.
-- Adapter hiện kiểm tra SDK/path bắt buộc; kiểm tra manifest/checksum đầy đủ thuộc Model Manager và release pipeline.
-
-## 3. Startup offline
-
-```text
-Resolve bundled v3
-→ Validate manifest
-→ Đăng ký VieNeuV3Engine(local_path)
-→ Chọn v3 mặc định
-→ Load GPU hoặc CPU backend trong worker
-→ Sẵn sàng tổng hợp offline
-```
-
-Yêu cầu:
-
-- Không gọi Hugging Face/API/remote mode khi startup, load hoặc synthesize v3.
-- Không block UI thread.
-- GPU lỗi → thử v3 CPU nếu backend CPU được bundle.
-- V3 lỗi hoàn toàn → chỉ dùng v2/Kokoro nếu đã cài; nếu chưa, hỏi người dùng trước khi tải.
-- First-run test phải chạy trên Windows sạch, chặn network và không có Hugging Face cache.
-
-Để hỗ trợ cả GPU và CPU, installer phải chứa đủ asset/runtime cho hai backend đã công bố. Repository v3 hiện khoảng 1,68 GB; artifact cuối còn có codec, PyTorch/CUDA hoặc ONNX, Qt và ứng dụng nên phải đo từ build thật.
-
-## 4. Tải model tùy chọn
-
-```text
-Người dùng chọn v2/Kokoro
-→ Hiển thị version/nguồn/license/kích thước
-→ Người dùng xác nhận
-→ Tải vào staging
-→ Hỗ trợ hủy
-→ Kiểm tra SHA-256
-→ Atomic move vào model root
-→ Đánh dấu installed
-```
-
-Không được tự tải ở startup, khi recommendation thay đổi hoặc khi fallback. Không coi tải dở là model hợp lệ. Request tải model không chứa text/audio/mẫu giọng.
-
-## 5. Build và license
-
-Máy build cần Internet; máy người dùng không cần Internet cho v3.
-
-1. Tải đúng snapshot v3 vào staging sạch.
-2. Chuẩn bị backbone, codec, voices và runtime theo backend hỗ trợ.
-3. Tạo manifest/checksum và bundle license/notices.
-4. Smoke test local path với network bị chặn.
-5. Đóng gói và cài thử trên Windows sạch.
-
-Không lấy model từ cache developer. Model v3 công bố Apache-2.0 nhưng release phải giữ attribution cho project/model package và kiểm tra riêng license của codec, tokenizer/phonemizer, runtime và dependency.
-
-## 6. Điều kiện hoàn thành
-
-- [ ] Installer chứa đầy đủ v3, manifest và license.
-- [ ] V3 load local và được chọn mặc định.
-- [ ] First-run offline pass; không có network request.
-- [ ] UI không treo khi load.
-- [ ] GPU/CPU fallback đúng phạm vi build.
-- [ ] V2/Kokoro chỉ tải sau consent, có checksum và atomic install.
+Model binary bị ignore khỏi Git. Pipeline build phải tái tạo từ revision đã pin
+hoặc nhận bundle đã được xác minh qua kênh artifact nội bộ.

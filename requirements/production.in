@@ -1,0 +1,20 @@
+# Windows x64 / Python 3.11 production input. Compile this file with hashes.
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+PyInstaller==6.21.0
+setuptools==80.9.0
+wheel==0.47.0
+PySide6==6.11.1
+vieneu==3.2.4
+torch==2.8.0+cpu
+torchaudio==2.8.0+cpu
+transformers==4.57.6
+numpy==2.4.6
+psutil==7.2.2
+py-cpuinfo==9.0.0
+loguru==0.7.3
+PyYAML==6.0.3
+scipy==1.17.1
+python-docx==1.2.0
+pypdf==6.15.0
+lameenc==1.8.4
