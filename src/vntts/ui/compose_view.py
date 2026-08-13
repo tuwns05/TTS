@@ -44,6 +44,16 @@ from vntts.utils.exceptions import AppError, ValidationError
 from vntts.utils.worker import TaskWorker
 
 
+DEFAULT_DEMO_TEXT = (
+    "Chào mừng bạn đến với GPHI-TTS, ứng dụng chuyển văn bản tiếng Việt "
+    "thành giọng nói ngay trên máy tính. "
+    "Ứng dụng hoạt động offline nên nội dung của bạn luôn được xử lý cục bộ. "
+    "Bạn có thể chọn giọng đọc và điều chỉnh tốc độ, cao độ, âm lượng theo nhu cầu. "
+    "Sau khi tạo giọng nói, hãy nghe thử trực tiếp hoặc xuất thành tệp âm thanh. "
+    "Hãy nhấn nút Tạo giọng nói để bắt đầu trải nghiệm."
+)
+
+
 class MainViewModel(QObject):
     """Coordinate main-screen state without importing concrete TTS SDKs."""
 
@@ -757,6 +767,7 @@ class TextInputWidget(QWidget):
         self.editor = QPlainTextEdit(self)
         self.editor.setObjectName("textInput")
         self.editor.setPlaceholderText("Nhập văn bản cần tạo giọng nói...")
+        self.editor.setPlainText(DEFAULT_DEMO_TEXT)
         self.editor.setAccessibleName("Nội dung")
         self.editor.setMinimumHeight(180)
         self.editor.setSizePolicy(

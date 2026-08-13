@@ -25,7 +25,7 @@ from vntts.db.models import AudioEffects, HardwareInfo, SynthesisResult
 from vntts.engines.factory import EngineFactory, EngineRegistry
 from vntts.services.synthesis import SynthesizeSpeech
 from vntts.services.voice_profiles import VoiceProfileStore
-from vntts.ui.compose_view import MainViewModel
+from vntts.ui.compose_view import DEFAULT_DEMO_TEXT, MainViewModel
 from vntts.ui.controls import ChevronComboBox
 from vntts.ui.main_window import MainWindow
 
@@ -91,7 +91,10 @@ def test_window_opens(qtbot, settings: Settings) -> None:  # type: ignore[no-unt
 
     assert window.isVisible()
     assert window.windowTitle() == settings.application.name
+    assert window.text_input.text() == DEFAULT_DEMO_TEXT
+    assert window.text_input.character_count.text() == f"{len(DEFAULT_DEMO_TEXT)} ký tự"
     assert window.synthesize_button.text() == "Tạo giọng nói"
+    assert window.synthesize_button.isEnabled()
     assert not window.waveform.has_audio
 
 
