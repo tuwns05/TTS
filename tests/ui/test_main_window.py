@@ -122,7 +122,6 @@ def test_hardware_detection_runs_after_window_is_visible_and_queues_load(
         use_case,
         settings,
         hardware_detector=delayed_hardware,
-        thread_pool=QThreadPool(),
     )
     window = MainWindow(view_model, settings)
     qtbot.addWidget(window)

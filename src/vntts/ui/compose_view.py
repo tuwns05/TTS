@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from typing import ClassVar
 
 import numpy as np
@@ -76,6 +77,7 @@ class MainViewModel(QObject):
         hardware: HardwareInfo | None = None,
         hardware_detector: Callable[[], HardwareInfo] | None = None,
         thread_pool: QThreadPool | None = None,
+        hardware_thread_pool: QThreadPool | None = None,
         document_importer: DocumentTextImporter | None = None,
         voice_enrollment_service: VoiceEnrollmentService | None = None,
     ) -> None:
@@ -87,6 +89,13 @@ class MainViewModel(QObject):
         self._hardware = hardware
         self._hardware_detector = hardware_detector
         self._thread_pool = thread_pool or QThreadPool.globalInstance()
+        self._task_executor = (
+            None
+            if thread_pool is not None
+            else ThreadPoolExecutor(max_workers=1, thread_name_prefix="vntts-engine")
+        )
+        self._hardware_thread_pool = hardware_thread_pool or QThreadPool(self)
+        self._hardware_thread_pool.setMaxThreadCount(1)
         self._document_importer = document_importer or DocumentTextImporter()
         self._voice_enrollment_service = voice_enrollment_service
         self._active_workers: set[TaskWorker] = set()
@@ -322,14 +331,21 @@ class MainViewModel(QObject):
 
         for worker in tuple(self._active_workers):
             worker.cancel()
-        self._thread_pool.waitForDone(2_000)
+        self._hardware_thread_pool.waitForDone(2_000)
+        if self._task_executor is None:
+            self._thread_pool.waitForDone(2_000)
+        else:
+            self._task_executor.shutdown(wait=True, cancel_futures=True)
         self._synthesize_speech.unload_all()
 
     def _start_worker(self, worker: TaskWorker) -> None:
         self._active_workers.add(worker)
         self._current_worker = worker
         worker.signals.finished.connect(lambda current=worker: self._worker_finished(current))
-        self._thread_pool.start(worker)
+        if self._task_executor is None:
+            self._thread_pool.start(worker)
+        else:
+            self._task_executor.submit(worker.run)
 
     def _start_hardware_detection(self) -> None:
         if self._hardware_detection_started or self._hardware is not None:
@@ -345,7 +361,7 @@ class MainViewModel(QObject):
         worker.signals.finished.connect(
             lambda current=worker: self._worker_finished(current)
         )
-        self._thread_pool.start(worker)
+        self._hardware_thread_pool.start(worker)
 
     def _worker_finished(self, worker: TaskWorker) -> None:
         self._active_workers.discard(worker)
