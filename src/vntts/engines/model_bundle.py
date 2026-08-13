@@ -35,13 +35,15 @@ def validate_vieneu_v3_bundle(
     bundle_root: Path,
     *,
     verify_hashes: bool = True,
+    cache_dir: Path | None = None,
 ) -> ModelBundleInfo:
     """Validate the pinned model manifest without performing network access."""
 
     root = bundle_root.expanduser().resolve()
     manifest_path = root / "manifest.json"
     try:
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest_bytes = manifest_path.read_bytes()
+        manifest = json.loads(manifest_bytes.decode("utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise EngineLoadError(
             f"Bundle VieNeu v3 thiếu hoặc hỏng manifest: {manifest_path}"
@@ -73,6 +75,8 @@ def validate_vieneu_v3_bundle(
     if not isinstance(files, list) or not files:
         raise EngineLoadError("Manifest VieNeu v3 không có danh sách tệp.")
 
+    verified_files: list[dict[str, int | str]] = []
+    candidates: list[tuple[Path, str]] = []
     for item in files:
         if not isinstance(item, dict):
             raise EngineLoadError("Manifest VieNeu v3 có mục tệp không hợp lệ.")
@@ -93,12 +97,90 @@ def validate_vieneu_v3_bundle(
             candidate.relative_to(root)
         except ValueError as exc:
             raise EngineLoadError("Manifest VieNeu v3 chứa đường dẫn ra ngoài bundle.") from exc
-        if not candidate.is_file() or candidate.stat().st_size != expected_size:
+        try:
+            file_stat = candidate.stat()
+        except OSError as exc:
+            raise EngineLoadError(
+                f"Tệp model VieNeu v3 thiếu hoặc sai kích thước: {relative}"
+            ) from exc
+        if not candidate.is_file() or file_stat.st_size != expected_size:
             raise EngineLoadError(f"Tệp model VieNeu v3 thiếu hoặc sai kích thước: {relative}")
-        if verify_hashes and _sha256(candidate) != expected_hash.lower():
-            raise EngineLoadError(f"Checksum model VieNeu v3 không khớp: {relative}")
+        verified_files.append(
+            {
+                "path": relative,
+                "size": file_stat.st_size,
+                "mtime_ns": file_stat.st_mtime_ns,
+            }
+        )
+        candidates.append((candidate, expected_hash.lower()))
+
+    if verify_hashes:
+        manifest_hash = hashlib.sha256(manifest_bytes).hexdigest()
+        marker_path = (
+            cache_dir.expanduser().resolve() / "vieneu-v3-bundle-validation.json"
+            if cache_dir is not None
+            else None
+        )
+        cache_matches = marker_path is not None and _validation_cache_matches(
+            marker_path, root, manifest_hash, verified_files
+        )
+        if not cache_matches:
+            for (candidate, expected_hash), item in zip(candidates, files, strict=True):
+                if _sha256(candidate) != expected_hash:
+                    raise EngineLoadError(
+                        f"Checksum model VieNeu v3 không khớp: {item['path']}"
+                    )
+            if marker_path is not None:
+                _write_validation_cache(
+                    marker_path, root, manifest_hash, verified_files
+                )
 
     return ModelBundleInfo(root=root, hub_cache=hub_cache, sdk_version=sdk_version)
+
+
+def _validation_cache_matches(
+    marker_path: Path,
+    bundle_root: Path,
+    manifest_hash: str,
+    files: list[dict[str, int | str]],
+) -> bool:
+    try:
+        marker = json.loads(marker_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    return (
+        isinstance(marker, dict)
+        and marker.get("bundle_root") == str(bundle_root)
+        and marker.get("manifest_sha256") == manifest_hash
+        and marker.get("files") == files
+    )
+
+
+def _write_validation_cache(
+    marker_path: Path,
+    bundle_root: Path,
+    manifest_hash: str,
+    files: list[dict[str, int | str]],
+) -> None:
+    marker = {
+        "bundle_root": str(bundle_root),
+        "manifest_sha256": manifest_hash,
+        "files": files,
+    }
+    temporary_path = marker_path.with_name(f"{marker_path.name}.{os.getpid()}.tmp")
+    try:
+        marker_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary_path.write_text(
+            json.dumps(marker, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        temporary_path.replace(marker_path)
+    except OSError:
+        # Cache chỉ là tối ưu; lỗi ghi cache không được làm model load thất bại.
+        try:
+            temporary_path.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def configure_offline_huggingface_cache(hub_cache: Path) -> None:

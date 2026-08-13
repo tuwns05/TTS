@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+import vntts.engines.model_bundle as model_bundle_module
 from vntts.engines.model_bundle import validate_vieneu_v3_bundle
 from vntts.engines.vieneu_engine import (
     VIENEU_V3_REPOSITORY,
@@ -51,6 +52,78 @@ def test_validate_model_bundle_rejects_tampering(tmp_path: Path) -> None:
 
     with pytest.raises(EngineLoadError, match="sai kích thước|Checksum"):
         validate_vieneu_v3_bundle(root)
+
+
+def test_validate_model_bundle_reuses_cached_file_metadata(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = _bundle(tmp_path)
+    cache_dir = tmp_path / "cache"
+    validate_vieneu_v3_bundle(root, cache_dir=cache_dir)
+
+    def unexpected_hash(_path: Path) -> str:
+        raise AssertionError("Không được đọc lại nội dung model khi cache còn hợp lệ")
+
+    monkeypatch.setattr(model_bundle_module, "_sha256", unexpected_hash)
+
+    validate_vieneu_v3_bundle(root, cache_dir=cache_dir)
+
+    marker = json.loads(
+        (cache_dir / "vieneu-v3-bundle-validation.json").read_text(encoding="utf-8")
+    )
+    assert len(marker["manifest_sha256"]) == 64
+    assert marker["files"][0]["path"] == "hub/model.bin"
+    assert marker["files"][0]["size"] == len(b"real-model-bytes")
+    assert isinstance(marker["files"][0]["mtime_ns"], int)
+
+
+def test_validate_model_bundle_rehashes_when_file_mtime_changes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = _bundle(tmp_path)
+    cache_dir = tmp_path / "cache"
+    model = root / "hub" / "model.bin"
+    validate_vieneu_v3_bundle(root, cache_dir=cache_dir)
+    original_hash = model_bundle_module._sha256
+    calls: list[Path] = []
+
+    def tracked_hash(path: Path) -> str:
+        calls.append(path)
+        return original_hash(path)
+
+    current_mtime = model.stat().st_mtime_ns
+    os.utime(model, ns=(current_mtime, current_mtime + 1_000_000_000))
+    monkeypatch.setattr(model_bundle_module, "_sha256", tracked_hash)
+
+    validate_vieneu_v3_bundle(root, cache_dir=cache_dir)
+
+    assert calls == [model.resolve()]
+
+
+def test_validate_model_bundle_rehashes_when_manifest_changes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = _bundle(tmp_path)
+    cache_dir = tmp_path / "cache"
+    manifest_path = root / "manifest.json"
+    validate_vieneu_v3_bundle(root, cache_dir=cache_dir)
+    original_hash = model_bundle_module._sha256
+    calls: list[Path] = []
+
+    def tracked_hash(path: Path) -> str:
+        calls.append(path)
+        return original_hash(path)
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    monkeypatch.setattr(model_bundle_module, "_sha256", tracked_hash)
+
+    validate_vieneu_v3_bundle(root, cache_dir=cache_dir)
+
+    assert calls == [(root / "hub" / "model.bin").resolve()]
 
 
 def test_engine_uses_pinned_offline_hub_bundle(

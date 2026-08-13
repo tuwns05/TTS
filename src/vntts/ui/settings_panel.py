@@ -122,7 +122,10 @@ class ModelSettingsPage(QWidget):
         self.load_button = QPushButton("Load model", card)
         self.load_button.setObjectName("loadModelButton")
         self.load_button.setProperty("variant", "primary")
+        self.load_button.setEnabled(False)
         self.load_button.clicked.connect(self._emit_load)
+        self._hardware_ready = False
+        self._loading = False
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(THEME.space_4, THEME.space_4, THEME.space_4, THEME.space_4)
         card_layout.setSpacing(THEME.space_2)
@@ -156,7 +159,12 @@ class ModelSettingsPage(QWidget):
             self.model_combo.setCurrentIndex(selected_index)
 
     def set_hardware(self, hardware: HardwareInfo | None, minimum_vram_gb: float | None) -> None:
-        if hardware is None or not hardware.cuda_available:
+        self._hardware_ready = hardware is not None
+        self.load_button.setEnabled(self._hardware_ready and not self._loading)
+        if hardware is None:
+            self.hardware_label.setText("Đang kiểm tra phần cứng...")
+            return
+        if not hardware.cuda_available:
             self.hardware_label.setText(
                 "Không phát hiện CUDA. Chế độ Tự động sẽ dùng CPU/ONNX."
             )
@@ -180,9 +188,10 @@ class ModelSettingsPage(QWidget):
         self.active_label.setText(details)
 
     def set_loading(self, loading: bool) -> None:
+        self._loading = loading
         self.model_combo.setEnabled(not loading)
         self.device_combo.setEnabled(not loading)
-        self.load_button.setEnabled(not loading)
+        self.load_button.setEnabled(self._hardware_ready and not loading)
         self.load_button.setText("Đang load..." if loading else "Load model")
 
     def _emit_load(self) -> None:

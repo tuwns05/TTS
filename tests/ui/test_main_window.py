@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from types import SimpleNamespace
 
 import numpy as np
@@ -20,7 +21,7 @@ from PySide6.QtWidgets import (
 from tests.stubs import StubTTSEngine
 from vntts.config.settings import Settings
 from vntts.config.theme import build_stylesheet
-from vntts.db.models import AudioEffects, SynthesisResult
+from vntts.db.models import AudioEffects, HardwareInfo, SynthesisResult
 from vntts.engines.factory import EngineFactory, EngineRegistry
 from vntts.services.synthesis import SynthesizeSpeech
 from vntts.services.voice_profiles import VoiceProfileStore
@@ -59,6 +60,17 @@ def _window(qtbot, settings: Settings) -> tuple[MainWindow, MainViewModel]:  # t
         registry,
         use_case,
         settings,
+        hardware=HardwareInfo(
+            cpu_name="Test CPU",
+            physical_cores=4,
+            logical_cores=8,
+            ram_gb=8,
+            gpu_name=None,
+            vram_gb=None,
+            cuda_available=False,
+            operating_system="Test",
+            architecture="x64",
+        ),
         thread_pool=QThreadPool(),
         voice_enrollment_service=FakeEnrollmentService(),  # type: ignore[arg-type]
     )
@@ -69,6 +81,7 @@ def _window(qtbot, settings: Settings) -> tuple[MainWindow, MainViewModel]:  # t
     )
     qtbot.addWidget(window)
     window.show()
+    window.start_initialization()
     qtbot.waitUntil(lambda: view_model.state == "idle", timeout=3_000)
     return window, view_model
 
@@ -80,6 +93,53 @@ def test_window_opens(qtbot, settings: Settings) -> None:  # type: ignore[no-unt
     assert window.windowTitle() == settings.application.name
     assert window.synthesize_button.text() == "Tạo giọng nói"
     assert not window.waveform.has_audio
+
+
+def test_hardware_detection_runs_after_window_is_visible_and_queues_load(
+    qtbot,
+    settings: Settings,
+) -> None:  # type: ignore[no-untyped-def]
+    registry = EngineRegistry()
+    registry.register("stub", lambda: StubTTSEngine(), StubTTSEngine.INFO)
+    use_case = SynthesizeSpeech(EngineFactory(registry), registry)
+
+    def delayed_hardware() -> HardwareInfo:
+        time.sleep(0.15)
+        return HardwareInfo(
+            cpu_name="Test CPU",
+            physical_cores=4,
+            logical_cores=8,
+            ram_gb=8,
+            gpu_name=None,
+            vram_gb=None,
+            cuda_available=False,
+            operating_system="Test",
+            architecture="x64",
+        )
+
+    view_model = MainViewModel(
+        registry,
+        use_case,
+        settings,
+        hardware_detector=delayed_hardware,
+        thread_pool=QThreadPool(),
+    )
+    window = MainWindow(view_model, settings)
+    qtbot.addWidget(window)
+    window.show()
+
+    assert window.isVisible()
+    assert window.model_settings_page.hardware_label.text() == "Đang kiểm tra phần cứng..."
+    assert not window.model_settings_page.load_button.isEnabled()
+
+    window.start_initialization()
+    view_model.load_model("stub", "cpu")
+
+    qtbot.waitUntil(lambda: view_model.hardware is not None, timeout=2_000)
+    qtbot.waitUntil(lambda: view_model.runtime_info is not None, timeout=2_000)
+    assert view_model.selected_engine_id == "stub"
+    assert "Không phát hiện CUDA" in window.model_settings_page.hardware_label.text()
+    assert window.model_settings_page.load_button.isEnabled()
 
 
 def test_compose_page_fits_standard_viewport_without_scrolling(

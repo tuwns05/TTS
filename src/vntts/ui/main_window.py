@@ -303,6 +303,10 @@ class MainWindow(QMainWindow):
             settings.hardware_recommendation.high_tier.min_vram_gb,
         )
         self._profiles_changed(self.voice_clone_page.profiles)
+
+    def start_initialization(self) -> None:
+        """Start slow startup work after the window has been shown."""
+
         self._view_model.initialize()
 
     @property
@@ -428,6 +432,7 @@ class MainWindow(QMainWindow):
         self._view_model.document_imported.connect(self._document_imported)
         self._view_model.voice_profile_created.connect(self._voice_profile_created)
         self._view_model.runtime_changed.connect(self._runtime_changed)
+        self._view_model.hardware_changed.connect(self._hardware_changed)
         self.playback_controls.play_requested.connect(self._play)
         self.playback_controls.pause_requested.connect(self._playback.pause)
         self.playback_controls.stop_requested.connect(self._playback.stop)
@@ -543,6 +548,12 @@ class MainWindow(QMainWindow):
             self._engine_badge.setProperty("state", "success")
         self._engine_badge.style().unpolish(self._engine_badge)
         self._engine_badge.style().polish(self._engine_badge)
+
+    def _hardware_changed(self, hardware: object) -> None:
+        self.model_settings_page.set_hardware(
+            hardware,
+            self._settings.hardware_recommendation.high_tier.min_vram_gb,
+        )
 
     def _profiles_changed(self, profiles: list) -> None:
         self._cloned_voice_artifacts = {

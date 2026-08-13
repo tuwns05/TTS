@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import ClassVar
 
 import numpy as np
@@ -52,6 +53,7 @@ class MainViewModel(QObject):
     document_imported = Signal(object)
     voice_profile_created = Signal(object)
     runtime_changed = Signal(object)
+    hardware_changed = Signal(object)
     error_occurred = Signal(str)
 
     VALID_STATES: ClassVar[set[str]] = {
@@ -72,6 +74,7 @@ class MainViewModel(QObject):
         settings: Settings,
         recommendation: EngineRecommendation | None = None,
         hardware: HardwareInfo | None = None,
+        hardware_detector: Callable[[], HardwareInfo] | None = None,
         thread_pool: QThreadPool | None = None,
         document_importer: DocumentTextImporter | None = None,
         voice_enrollment_service: VoiceEnrollmentService | None = None,
@@ -82,6 +85,7 @@ class MainViewModel(QObject):
         self._settings = settings
         self._recommendation = recommendation
         self._hardware = hardware
+        self._hardware_detector = hardware_detector
         self._thread_pool = thread_pool or QThreadPool.globalInstance()
         self._document_importer = document_importer or DocumentTextImporter()
         self._voice_enrollment_service = voice_enrollment_service
@@ -93,6 +97,10 @@ class MainViewModel(QObject):
         self._selected_capabilities: EngineCapabilities | None = None
         self._runtime_info: EngineRuntimeInfo | None = None
         self._state_before_document_import = "idle"
+        self._hardware_detection_started = False
+        self._startup_requested = False
+        self._startup_completed = False
+        self._pending_load_request: tuple[str, str] | None = None
 
     @property
     def state(self) -> str:
@@ -141,6 +149,14 @@ class MainViewModel(QObject):
     def initialize(self) -> None:
         """Select and load the configured engine asynchronously."""
 
+        self._startup_requested = True
+        if self._hardware is None:
+            self._start_hardware_detection()
+            return
+        if self._startup_completed:
+            return
+        self._startup_completed = True
+
         engine_ids = self._registry.list_engine_ids()
         if not engine_ids:
             self._fail("Không có engine nào được đăng ký.")
@@ -176,6 +192,10 @@ class MainViewModel(QObject):
             return
         if device not in {"auto", "cpu", "cuda"}:
             self._fail(f"Thiết bị '{device}' không được hỗ trợ.")
+            return
+        if self._hardware is None:
+            self._pending_load_request = (engine_id, device)
+            self._start_hardware_detection()
             return
         if device == "cuda" and self._hardware is not None and not self._hardware.cuda_available:
             self.error_occurred.emit(
@@ -311,10 +331,37 @@ class MainViewModel(QObject):
         worker.signals.finished.connect(lambda current=worker: self._worker_finished(current))
         self._thread_pool.start(worker)
 
+    def _start_hardware_detection(self) -> None:
+        if self._hardware_detection_started or self._hardware is not None:
+            return
+        if self._hardware_detector is None:
+            from vntts.services.hardware import HardwareDetector
+
+            self._hardware_detector = HardwareDetector().detect
+        self._hardware_detection_started = True
+        worker = TaskWorker(self._hardware_detector)
+        worker.signals.result.connect(self._hardware_ready)
+        self._active_workers.add(worker)
+        worker.signals.finished.connect(
+            lambda current=worker: self._worker_finished(current)
+        )
+        self._thread_pool.start(worker)
+
     def _worker_finished(self, worker: TaskWorker) -> None:
         self._active_workers.discard(worker)
         if self._current_worker is worker:
             self._current_worker = None
+
+    def _hardware_ready(self, hardware: HardwareInfo) -> None:
+        self._hardware = hardware
+        self.hardware_changed.emit(hardware)
+        pending_request = self._pending_load_request
+        self._pending_load_request = None
+        if pending_request is not None:
+            self._startup_completed = True
+            self.load_model(*pending_request)
+        elif self._startup_requested:
+            self.initialize()
 
     def _engine_ready(self, engine_id: str, voices: list[VoiceInfo]) -> None:
         if engine_id != self._selected_engine_id:

@@ -25,7 +25,7 @@ hardware_recommendation:
   high_tier:
     min_ram_gb: 16
     min_physical_cores: 6
-    min_vram_gb: 6
+    min_vram_gb: 1
   medium_tier:
     min_ram_gb: 8
     min_physical_cores: 4

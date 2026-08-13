@@ -307,6 +307,7 @@ class VieNeuV3Engine(BaseTTSEngine):
         *,
         tokenizer_path: Path | None = None,
         bundle_path: Path | None = None,
+        bundle_cache_dir: Path | None = None,
         allow_download: bool = False,
         backend: str = "auto",
         sample_rate: int = 48_000,
@@ -318,6 +319,9 @@ class VieNeuV3Engine(BaseTTSEngine):
         )
         self._allow_download = allow_download
         self._bundle_path = bundle_path.resolve() if bundle_path is not None else None
+        self._bundle_cache_dir = (
+            bundle_cache_dir.resolve() if bundle_cache_dir is not None else None
+        )
         self._backend = backend
         self._sample_rate = sample_rate
         self._sdk_factory = sdk_factory or _default_vieneu_factory
@@ -362,6 +366,7 @@ class VieNeuV3Engine(BaseTTSEngine):
             bundle_info = validate_vieneu_v3_bundle(
                 self._bundle_path,
                 verify_hashes=True,
+                cache_dir=self._bundle_cache_dir,
             )
             configure_offline_huggingface_cache(bundle_info.hub_cache)
             if not self._injected_factory:

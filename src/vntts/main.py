@@ -10,6 +10,7 @@ from pathlib import Path
 
 import numpy as np
 from loguru import logger
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication
 
 from vntts.config.settings import Settings, load_settings
@@ -50,6 +51,7 @@ def build_application(argv: Sequence[str] | None = None) -> tuple[QApplication, 
         local_v3,
         tokenizer_path=(local_v3_tokenizer if local_v3_tokenizer.is_dir() else None),
         bundle_path=(bundled_v3 if is_model_bundle else None),
+        bundle_cache_dir=settings.paths.cache_dir,
         allow_download=not is_production,
         backend="auto",
     )
@@ -69,13 +71,12 @@ def build_application(argv: Sequence[str] | None = None) -> tuple[QApplication, 
     )
     voice_profile_store = VoiceProfileStore(settings.paths.data_dir)
     voice_enrollment = VoiceEnrollmentService(use_case, voice_profile_store)
-    hardware = HardwareDetector().detect()
     view_model = MainViewModel(
         registry,
         use_case,
         settings,
         None,
-        hardware=hardware,
+        hardware_detector=HardwareDetector().detect,
         voice_enrollment_service=voice_enrollment,
     )
     window = MainWindow(
@@ -104,6 +105,7 @@ def main() -> int:
 
     application, window = build_application()
     window.show()
+    QTimer.singleShot(0, window.start_initialization)
     return application.exec()
 
 
@@ -114,6 +116,7 @@ def _run_production_smoke(output_path: Path, device: str = "cpu") -> int:
     configure_logging(settings)
     engine = VieNeuV3Engine(
         bundle_path=settings.paths.bundled_models_dir / "vieneu-v3",
+        bundle_cache_dir=settings.paths.cache_dir,
         allow_download=False,
         backend="auto",
     )
