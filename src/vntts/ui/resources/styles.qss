@@ -69,14 +69,6 @@ QLabel#metricValue {
     font-size: 12px;
 }
 
-QLabel#engineBadge {
-    color: #1D4ED8;
-    background: #EAF2FF;
-    border: 1px solid #BFDBFE;
-    border-radius: 12px;
-    padding: 8px 16px;
-}
-
 QFrame#composerCard,
 QFrame#playerCard,
 QWidget#enginePanel,

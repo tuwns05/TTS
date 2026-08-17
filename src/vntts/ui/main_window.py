@@ -149,10 +149,6 @@ class MainWindow(QMainWindow):
 
         app_title = QLabel("Tạo giọng nói", self)
         app_title.setProperty("role", "title")
-        self._engine_badge = QLabel("Offline · v3", self)
-        self._engine_badge.setObjectName("engineBadge")
-        self._engine_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._engine_badge.setProperty("state", "success")
         self._toolbar = QFrame(self)
         self._toolbar.setObjectName("toolbar")
         self._toolbar.setFixedHeight(THEME.toolbar_height)
@@ -163,7 +159,6 @@ class MainWindow(QMainWindow):
         self._header_layout.setContentsMargins(THEME.space_4, 0, THEME.space_4, 0)
         self._header_layout.addWidget(app_title)
         self._header_layout.addStretch()
-        self._header_layout.addWidget(self._engine_badge)
 
         self._player_card = QFrame(self)
         self._player_card.setObjectName("playerCard")
@@ -539,15 +534,6 @@ class MainWindow(QMainWindow):
     def _runtime_changed(self, runtime: object) -> None:
         self.active_model_card.set_runtime(runtime)
         self.model_settings_page.set_runtime(runtime)
-        if runtime is None:
-            self._engine_badge.setText("Chưa load model")
-            self._engine_badge.setProperty("state", "neutral")
-        else:
-            device = "GPU" if bool(getattr(runtime, "is_gpu", False)) else "CPU"
-            self._engine_badge.setText(f"Offline · {device}")
-            self._engine_badge.setProperty("state", "success")
-        self._engine_badge.style().unpolish(self._engine_badge)
-        self._engine_badge.style().polish(self._engine_badge)
 
     def _hardware_changed(self, hardware: object) -> None:
         self.model_settings_page.set_hardware(
