@@ -2,7 +2,7 @@ application:
   name: "GPHI-TTS"
   environment: "development"
   # Cần kiểm tra và thay bằng thông tin doanh nghiệp thật trước khi phát hành.
-  manufacturer: "Công ty cổ phần đầu tư giải pháp hữu ích"
+  manufacturer: "CÔNG TY CỔ PHẦN ĐẦU TƯ GIẢI PHÁP HỮU ÍCH"
   address: "Lô 17, Khu nhà liền kề Chung cư Simona, đường Hoàng Văn Thụ, Phường Quy Nhơn Nam, Tỉnh Gia Lai"
   phone: "" # Cần thay bằng số điện thoại thật.
   website: "" # Cần thay bằng website thật.

@@ -164,6 +164,10 @@ def build_stylesheet(t: Theme = THEME) -> str:
         font-size: {t.font_size_section}px;
         font-weight: 600;
     }}
+    QLabel#sidebarBrand {{
+        font-size: {t.font_size_section + 1}px;
+        font-weight: 700;
+    }}
     QLabel#activeModelTitle {{
         color: {t.success};
         font-size: {t.font_size_section}px;

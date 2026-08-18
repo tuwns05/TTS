@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
+    QPushButton,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
@@ -105,6 +106,38 @@ class ContactPage(QWidget):
         details.setColumnStretch(0, 1)
         details.setColumnStretch(2, 1)
 
+        self.license_toggle_button = QPushButton(
+            "ĐIỀU KHOẢN & GIẤY PHÉP",
+            self.card,
+        )
+        self.license_toggle_button.setObjectName("contactLicenseToggle")
+        self.license_toggle_button.setCheckable(True)
+        self.license_toggle_button.setAccessibleName(
+            "Hiển thị nội dung giấy phép"
+        )
+        self.license_toggle_button.setCursor(
+            Qt.CursorShape.PointingHandCursor
+        )
+        self.license_toggle_button.setStyleSheet(
+            f"color: {THEME.accent}; "
+            f"font-size: {THEME.font_size_caption}px; font-weight: 600; "
+            "text-align: left; background: transparent; border: none; "
+            "padding: 0;"
+        )
+        self.license_link_label = QLabel(self.card)
+        self.license_link_label.setObjectName("contactLicenseLink")
+        self.license_link_label.setTextFormat(Qt.TextFormat.RichText)
+        self.license_link_label.setOpenExternalLinks(True)
+        self.license_link_label.setText(
+            '<a href="https://doc.qt.io/qtforpython-6/overviews/qtdoc-lgpl.html" '
+            f'style="color: {THEME.accent}; text-decoration: none;">'
+            "Xem nội dung giấy phép LGPLv3 của Qt</a>"
+        )
+        self.license_link_label.hide()
+        self.license_toggle_button.toggled.connect(
+            self.license_link_label.setVisible
+        )
+
         card_layout = QVBoxLayout(self.card)
         card_layout.setContentsMargins(
             THEME.space_4,
@@ -117,6 +150,9 @@ class ContactPage(QWidget):
         card_layout.addWidget(self._divider())
         card_layout.addWidget(section_title)
         card_layout.addLayout(details)
+        card_layout.addWidget(self._divider())
+        card_layout.addWidget(self.license_toggle_button)
+        card_layout.addWidget(self.license_link_label)
 
         content_row = QHBoxLayout()
         content_row.setContentsMargins(0, 0, 0, 0)

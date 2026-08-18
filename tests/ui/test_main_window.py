@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 import soundfile as sf
-from PySide6.QtCore import QThreadPool, QTimer
+from PySide6.QtCore import Qt, QThreadPool, QTimer
 from PySide6.QtWidgets import (
     QApplication,
     QBoxLayout,
@@ -96,6 +96,8 @@ def test_window_opens(qtbot, settings: Settings) -> None:  # type: ignore[no-unt
 
     assert window.isVisible()
     assert window.windowTitle() == settings.application.name
+    assert window.sidebar_brand.alignment() == Qt.AlignmentFlag.AlignCenter
+    assert window.sidebar_brand.font().pixelSize() == THEME.font_size_section + 1
     assert window.text_input.text() == DEFAULT_DEMO_TEXT
     assert window.text_input.character_count.text() == f"{len(DEFAULT_DEMO_TEXT)} ký tự"
     assert window.synthesize_button.text() == "Tạo giọng nói"
@@ -597,7 +599,7 @@ def test_contact_page_displays_company_details(
     )
     assert (
         window.contact_page.company_name_label.text()
-        == "Công ty cổ phần đầu tư giải pháp hữu ích"
+        == "CÔNG TY CỔ PHẦN ĐẦU TƯ GIẢI PHÁP HỮU ÍCH"
     )
     assert window.contact_page.address_label.text() == (
         "Lô 17, Khu nhà liền kề Chung cư Simona, đường Hoàng Văn Thụ, "
@@ -607,6 +609,14 @@ def test_contact_page_displays_company_details(
     assert window.contact_page.email_label.text() == "Chưa cập nhật"
     assert window.contact_page.website_label.text() == "Chưa cập nhật"
     assert window.contact_page.support_email_label.text() == "Chưa cập nhật"
+    assert not window.contact_page.license_link_label.isVisible()
+    assert window.contact_page.license_link_label.openExternalLinks()
+    assert "qtdoc-lgpl.html" in window.contact_page.license_link_label.text()
+
+    window.contact_page.license_toggle_button.click()
+
+    assert window.contact_page.license_toggle_button.isChecked()
+    assert window.contact_page.license_link_label.isVisible()
 
     window.contact_page.set_info(
         "Công ty thử nghiệm",
