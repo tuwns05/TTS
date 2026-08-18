@@ -501,11 +501,9 @@ def test_selecting_engine_updates_voice_list(qtbot, settings: Settings) -> None:
 def test_settings_sections_are_separate_cards(qtbot, settings: Settings) -> None:  # type: ignore[no-untyped-def]
     window, _ = _window(qtbot, settings)
 
-    assert isinstance(window.model_settings_page.model_combo, ChevronComboBox)
     assert isinstance(window.model_settings_page.device_combo, ChevronComboBox)
     assert isinstance(window.voice_selector.voice_combo, ChevronComboBox)
     assert isinstance(window.voice_style.style_combo, ChevronComboBox)
-    assert window.model_settings_page.model_combo.maxVisibleItems() == 8
     assert window.voice_selector.voice_combo.maxVisibleItems() == 8
     assert window.voice_style.style_combo.maxVisibleItems() == 8
     assert (
@@ -544,10 +542,10 @@ def test_settings_sections_are_separate_cards(qtbot, settings: Settings) -> None
     assert window.voice_style.adjustments_divider.height() == 1
 
 
-def test_model_selection_is_only_on_settings_page(qtbot, settings: Settings) -> None:  # type: ignore[no-untyped-def]
+def test_settings_page_only_exposes_device_selection(qtbot, settings: Settings) -> None:  # type: ignore[no-untyped-def]
     window, _ = _window(qtbot, settings)
 
-    assert window.page_stack.count() == 3
+    assert window.page_stack.count() == 4
     assert window.active_model_card.title_label.text() == "Thiết bị xử lý"
     assert window.active_model_card.title_label.objectName() == "activeModelTitle"
     assert window.active_model_card.title_label.font().bold()
@@ -564,11 +562,66 @@ def test_model_selection_is_only_on_settings_page(qtbot, settings: Settings) -> 
 
     assert window.page_stack.currentIndex() == 2
     assert window.nav_settings_button.isChecked()
-    assert window.model_settings_page.model_combo.count() == 1
+    assert window.findChild(ChevronComboBox, "packagedModelCombo") is None
+    assert window.model_settings_page.load_button.text() == "Áp dụng"
+    assert (
+        window.model_settings_page.active_label.text()
+        == "Đang hoạt động trên: CPU"
+    )
+    assert "Stub TTS Engine" not in window.model_settings_page.active_label.text()
     assert [
         window.model_settings_page.device_combo.itemData(index)
         for index in range(window.model_settings_page.device_combo.count())
     ] == ["auto", "cuda", "cpu"]
+
+
+def test_contact_page_displays_company_details(
+    qtbot, settings: Settings
+) -> None:  # type: ignore[no-untyped-def]
+    window, _ = _window(qtbot, settings)
+
+    window.nav_contact_button.click()
+
+    assert window.page_stack.currentIndex() == 3
+    assert window.nav_contact_button.isChecked()
+    assert not window.nav_compose_button.isChecked()
+    assert not window.nav_clone_button.isChecked()
+    assert not window.nav_settings_button.isChecked()
+    assert window.contact_page.card.maximumWidth() == THEME.content_reading_width
+    assert (
+        abs(
+            window.contact_page.card.geometry().center().x()
+            - window.contact_page.rect().center().x()
+        )
+        <= THEME.space_1
+    )
+    assert (
+        window.contact_page.company_name_label.text()
+        == "Công ty cổ phần đầu tư giải pháp hữu ích"
+    )
+    assert window.contact_page.address_label.text() == (
+        "Lô 17, Khu nhà liền kề Chung cư Simona, đường Hoàng Văn Thụ, "
+        "Phường Quy Nhơn Nam, Tỉnh Gia Lai"
+    )
+    assert window.contact_page.phone_label.text() == "Chưa cập nhật"
+    assert window.contact_page.email_label.text() == "Chưa cập nhật"
+    assert window.contact_page.website_label.text() == "Chưa cập nhật"
+    assert window.contact_page.support_email_label.text() == "Chưa cập nhật"
+
+    window.contact_page.set_info(
+        "Công ty thử nghiệm",
+        "Địa chỉ thử nghiệm",
+        "0123 456 789",
+        "support@example.com",
+        "example.com",
+    )
+
+    assert 'href="tel:0123%20456%20789"' in window.contact_page.phone_label.text()
+    assert 'href="mailto:support@example.com"' in window.contact_page.email_label.text()
+    assert 'href="https://example.com"' in window.contact_page.website_label.text()
+    assert window.contact_page.phone_label.openExternalLinks()
+    assert window.contact_page.email_label.openExternalLinks()
+    assert window.contact_page.website_label.openExternalLinks()
 
 
 def test_style_selection_is_independent_from_voice(

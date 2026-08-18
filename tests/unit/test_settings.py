@@ -46,6 +46,37 @@ def test_production_defaults_to_bundled_vieneu_v3(
     assert result.tts.default_engine == "vieneu-v3"
 
 
+def test_application_contact_fields_are_optional_and_normalized(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "contact-settings.yaml"
+    config_path.write_text(
+        """
+application:
+  name: GPHI-TTS
+  environment: development
+  manufacturer: "  Công ty thử nghiệm  "
+  address: "  Địa chỉ thử nghiệm  "
+  phone: ""
+  website: "  example.com  "
+  support_email: "  support@example.com  "
+  copyright: ""
+""".strip(),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("VNTTS_APP_DATA_DIR", str(tmp_path / "app-data"))
+
+    result = load_settings(config_path, create_directories=False)
+
+    assert result.application.manufacturer == "Công ty thử nghiệm"
+    assert result.application.address == "Địa chỉ thử nghiệm"
+    assert result.application.phone == ""
+    assert result.application.website == "example.com"
+    assert result.application.support_email == "support@example.com"
+    assert result.application.copyright == ""
+
+
 def test_frozen_build_defaults_to_production_and_meipass(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

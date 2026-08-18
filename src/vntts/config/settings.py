@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import os
 import sys
+from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping
 
 import yaml
 
@@ -15,7 +15,16 @@ from vntts.db.models import HardwareRecommendationSettings, TierSettings
 from vntts.utils.exceptions import ConfigurationError
 
 _SAFE_DEFAULTS: dict[str, object] = {
-    "application": {"name": "Vietnamese TTS Desktop", "environment": "development"},
+    "application": {
+        "name": "Vietnamese TTS Desktop",
+        "environment": "development",
+        "manufacturer": "",
+        "address": "",
+        "phone": "",
+        "website": "",
+        "support_email": "",
+        "copyright": "",
+    },
     "paths": {
         "bundled_models_dir": "resources/models",
         "models_dir": "models",
@@ -47,6 +56,12 @@ class ApplicationSettings:
 
     name: str
     environment: str
+    manufacturer: str = ""
+    website: str = ""
+    support_email: str = ""
+    copyright: str = ""
+    address: str = ""
+    phone: str = ""
 
 
 @dataclass(frozen=True)
@@ -150,6 +165,14 @@ def _number(value: object, label: str, *, positive: bool = False) -> float:
     return numeric
 
 
+def _optional_text(value: object, label: str) -> str:
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        raise ConfigurationError(f"'{label}' phải là chuỗi.")
+    return value.strip()
+
+
 def _resolve_path(value: object, root: Path, label: str) -> Path:
     if not isinstance(value, str) or not value.strip():
         raise ConfigurationError(f"'{label}' phải là đường dẫn hợp lệ.")
@@ -186,9 +209,9 @@ def load_settings(config_path: Path | None = None, *, create_directories: bool =
         "logs_dir": os.getenv("VNTTS_LOGS_DIR"),
     }
     normalized_paths: dict[str, Path] = {}
-    for key in path_overrides:
+    for key, override in path_overrides.items():
         normalized_paths[key] = _resolve_path(
-            path_overrides[key] or paths.get(key), app_root, f"paths.{key}"
+            override or paths.get(key), app_root, f"paths.{key}"
         )
     normalized_paths["bundled_models_dir"] = _resolve_path(
         os.getenv("VNTTS_BUNDLED_MODELS_DIR") or paths.get("bundled_models_dir"),
@@ -221,7 +244,22 @@ def load_settings(config_path: Path | None = None, *, create_directories: bool =
         raise ConfigurationError("Mức logging không hợp lệ.")
 
     settings = Settings(
-        application=ApplicationSettings(application_name, environment),
+        application=ApplicationSettings(
+            name=application_name.strip(),
+            environment=environment.strip(),
+            manufacturer=_optional_text(
+                app.get("manufacturer"), "application.manufacturer"
+            ),
+            website=_optional_text(app.get("website"), "application.website"),
+            support_email=_optional_text(
+                app.get("support_email"), "application.support_email"
+            ),
+            copyright=_optional_text(
+                app.get("copyright"), "application.copyright"
+            ),
+            address=_optional_text(app.get("address"), "application.address"),
+            phone=_optional_text(app.get("phone"), "application.phone"),
+        ),
         paths=PathSettings(**normalized_paths),
         tts=TTSSettings(default_engine),
         audio=AudioSettings(

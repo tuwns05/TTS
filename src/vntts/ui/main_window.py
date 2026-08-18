@@ -33,6 +33,7 @@ from vntts.ui.compose_view import (
     TextInputWidget,
     WaveformPreview,
 )
+from vntts.ui.contact_panel import ContactPage
 from vntts.ui.settings_panel import (
     ActiveModelCard,
     ModelSettingsPage,
@@ -240,11 +241,18 @@ class MainWindow(QMainWindow):
         self._model_settings_scroll_area.setWidgetResizable(True)
         self._model_settings_scroll_area.setFrameShape(QFrame.Shape.NoFrame)
         self._model_settings_scroll_area.setWidget(self.model_settings_page)
+        self.contact_page = ContactPage(self)
+        self._contact_scroll_area = QScrollArea(self)
+        self._contact_scroll_area.setObjectName("contactScrollArea")
+        self._contact_scroll_area.setWidgetResizable(True)
+        self._contact_scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        self._contact_scroll_area.setWidget(self.contact_page)
         self.page_stack = QStackedWidget(self)
         self.page_stack.setObjectName("pageStack")
         self.page_stack.addWidget(self._scroll_area)
         self.page_stack.addWidget(self._clone_scroll_area)
         self.page_stack.addWidget(self._model_settings_scroll_area)
+        self.page_stack.addWidget(self._contact_scroll_area)
 
         self._sidebar = QFrame(self)
         self._sidebar.setObjectName("sidebar")
@@ -258,10 +266,13 @@ class MainWindow(QMainWindow):
         self.nav_clone_button.setObjectName("navCloneButton")
         self.nav_settings_button = QPushButton("Cài đặt", self._sidebar)
         self.nav_settings_button.setObjectName("navSettingsButton")
+        self.nav_contact_button = QPushButton("Liên hệ", self._sidebar)
+        self.nav_contact_button.setObjectName("navContactButton")
         for button in (
             self.nav_compose_button,
             self.nav_clone_button,
             self.nav_settings_button,
+            self.nav_contact_button,
         ):
             button.setCheckable(True)
             button.setProperty("nav", True)
@@ -279,6 +290,7 @@ class MainWindow(QMainWindow):
         sidebar_layout.addWidget(self.nav_compose_button)
         sidebar_layout.addWidget(self.nav_clone_button)
         sidebar_layout.addWidget(self.nav_settings_button)
+        sidebar_layout.addWidget(self.nav_contact_button)
         sidebar_layout.addStretch()
 
         shell = QWidget(self)
@@ -299,6 +311,13 @@ class MainWindow(QMainWindow):
         self.model_settings_page.set_hardware(
             view_model.hardware,
             settings.hardware_recommendation.high_tier.min_vram_gb,
+        )
+        self.contact_page.set_info(
+            settings.application.manufacturer,
+            settings.application.address,
+            settings.application.phone,
+            settings.application.support_email,
+            settings.application.website,
         )
         self.active_model_card.set_hardware(view_model.hardware)
         self._profiles_changed(self.voice_clone_page.profiles)
@@ -414,6 +433,7 @@ class MainWindow(QMainWindow):
         self.nav_compose_button.clicked.connect(lambda: self._show_page(0))
         self.nav_clone_button.clicked.connect(lambda: self._show_page(1))
         self.nav_settings_button.clicked.connect(lambda: self._show_page(2))
+        self.nav_contact_button.clicked.connect(lambda: self._show_page(3))
         self.voice_clone_page.profiles_changed.connect(self._profiles_changed)
         self.voice_clone_page.enrollment_requested.connect(self._enroll_voice)
         self.voice_clone_page.preview_requested.connect(self._preview_cloned_voice)
@@ -534,6 +554,7 @@ class MainWindow(QMainWindow):
         self.nav_compose_button.setChecked(index == 0)
         self.nav_clone_button.setChecked(index == 1)
         self.nav_settings_button.setChecked(index == 2)
+        self.nav_contact_button.setChecked(index == 3)
 
     def _runtime_changed(self, runtime: object) -> None:
         self.active_model_card.set_runtime(runtime)

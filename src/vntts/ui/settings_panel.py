@@ -83,18 +83,18 @@ class ActiveModelCard(QFrame):
 
 
 class ModelSettingsPage(QWidget):
-    """Select a packaged model and explicitly load it on CPU, GPU, or auto."""
+    """Select the processing device used by the packaged speech engine."""
 
     load_requested = Signal(str, str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("modelSettingsPage")
-        title = QLabel("Cài đặt model", self)
+        title = QLabel("Cài đặt thiết bị", self)
         title.setProperty("role", "title")
         intro = QLabel(
-            "Chọn model đã được đóng gói và thiết bị suy luận. "
-            "Khi đổi thiết bị, model sẽ được load lại.",
+            "Chọn thiết bị xử lý dùng để tạo giọng nói. "
+            "Khi đổi thiết bị, hệ thống sẽ áp dụng lại cấu hình.",
             self,
         )
         intro.setObjectName("helperText")
@@ -103,11 +103,6 @@ class ModelSettingsPage(QWidget):
         card = QFrame(self)
         card.setObjectName("modelSettingsCard")
         card.setProperty("card", True)
-        model_label = QLabel("Model đóng gói", card)
-        model_label.setObjectName("fieldLabel")
-        self.model_combo = ChevronComboBox(card)
-        self.model_combo.setObjectName("packagedModelCombo")
-        self.model_combo.setAccessibleName("Model đóng gói")
         device_label = QLabel("Thiết bị xử lý", card)
         device_label.setObjectName("fieldLabel")
         self.device_combo = ChevronComboBox(card)
@@ -119,21 +114,20 @@ class ModelSettingsPage(QWidget):
         self.hardware_label = QLabel("Chưa kiểm tra phần cứng.", card)
         self.hardware_label.setObjectName("helperText")
         self.hardware_label.setWordWrap(True)
-        self.active_label = QLabel("Chưa load model.", card)
+        self.active_label = QLabel("Chưa có thiết bị đang hoạt động.", card)
         self.active_label.setObjectName("runtimeSummary")
         self.active_label.setWordWrap(True)
-        self.load_button = QPushButton("Load model", card)
+        self.load_button = QPushButton("Áp dụng", card)
         self.load_button.setObjectName("loadModelButton")
         self.load_button.setProperty("variant", "primary")
         self.load_button.setEnabled(False)
         self.load_button.clicked.connect(self._emit_load)
+        self._selected_engine_id: str | None = None
         self._hardware_ready = False
         self._loading = False
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(THEME.space_4, THEME.space_4, THEME.space_4, THEME.space_4)
         card_layout.setSpacing(THEME.space_2)
-        card_layout.addWidget(model_label)
-        card_layout.addWidget(self.model_combo)
         card_layout.addWidget(device_label)
         card_layout.addWidget(self.device_combo)
         card_layout.addWidget(self.hardware_label)
@@ -152,24 +146,23 @@ class ModelSettingsPage(QWidget):
         layout.addStretch()
 
     def set_models(self, models: list[EngineInfo], selected_id: str | None) -> None:
-        self.model_combo.clear()
-        selected_index = 0
-        for index, model in enumerate(models):
-            self.model_combo.addItem(model.display_name, model.engine_id)
-            if model.engine_id == selected_id:
-                selected_index = index
-        if self.model_combo.count():
-            self.model_combo.setCurrentIndex(selected_index)
+        engine_ids = [model.engine_id for model in models]
+        self._selected_engine_id = (
+            selected_id
+            if selected_id in engine_ids
+            else engine_ids[0] if engine_ids else None
+        )
+        self._refresh_load_button_state()
 
     def set_hardware(self, hardware: HardwareInfo | None, minimum_vram_gb: float | None) -> None:
         self._hardware_ready = hardware is not None
-        self.load_button.setEnabled(self._hardware_ready and not self._loading)
+        self._refresh_load_button_state()
         if hardware is None:
             self.hardware_label.setText("Đang kiểm tra phần cứng...")
             return
         if not hardware.cuda_available:
             self.hardware_label.setText(
-                "Không phát hiện CUDA. Chế độ Tự động sẽ dùng CPU/ONNX."
+                "Không phát hiện CUDA. Chế độ Tự động sẽ dùng CPU."
             )
             return
         vram = f"{hardware.vram_gb:.1f} GB VRAM" if hardware.vram_gb is not None else "VRAM không xác định"
@@ -183,25 +176,33 @@ class ModelSettingsPage(QWidget):
 
     def set_runtime(self, info: EngineRuntimeInfo | None) -> None:
         if info is None:
-            self.active_label.setText("Chưa load model.")
+            self.active_label.setText("Chưa có thiết bị đang hoạt động.")
             return
-        details = f"Đang hoạt động: {info.summary}"
-        if info.fallback_reason:
-            details += f"\n{info.fallback_reason}"
-        self.active_label.setText(details)
+        if info.is_gpu:
+            device = f"GPU · {info.device_name}"
+        elif info.device_name.strip().lower() == "cpu":
+            device = "CPU"
+        else:
+            device = f"CPU · {info.device_name}"
+        self.active_label.setText(f"Đang hoạt động trên: {device}")
 
     def set_loading(self, loading: bool) -> None:
         self._loading = loading
-        self.model_combo.setEnabled(not loading)
         self.device_combo.setEnabled(not loading)
-        self.load_button.setEnabled(self._hardware_ready and not loading)
-        self.load_button.setText("Đang load..." if loading else "Load model")
+        self._refresh_load_button_state()
+        self.load_button.setText("Đang áp dụng..." if loading else "Áp dụng")
 
     def _emit_load(self) -> None:
-        engine_id = self.model_combo.currentData()
         device = self.device_combo.currentData()
-        if engine_id is not None and device is not None:
-            self.load_requested.emit(str(engine_id), str(device))
+        if self._selected_engine_id is not None and device is not None:
+            self.load_requested.emit(self._selected_engine_id, str(device))
+
+    def _refresh_load_button_state(self) -> None:
+        self.load_button.setEnabled(
+            self._hardware_ready
+            and self._selected_engine_id is not None
+            and not self._loading
+        )
 
 
 class VoiceSelectorWidget(QGroupBox):
