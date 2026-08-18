@@ -300,6 +300,7 @@ class MainWindow(QMainWindow):
             view_model.hardware,
             settings.hardware_recommendation.high_tier.min_vram_gb,
         )
+        self.active_model_card.set_hardware(view_model.hardware)
         self._profiles_changed(self.voice_clone_page.profiles)
 
     def start_initialization(self) -> None:
@@ -543,6 +544,7 @@ class MainWindow(QMainWindow):
             hardware,
             self._settings.hardware_recommendation.high_tier.min_vram_gb,
         )
+        self.active_model_card.set_hardware(hardware)
 
     def _profiles_changed(self, profiles: list) -> None:
         self._cloned_voice_artifacts = {
@@ -571,8 +573,8 @@ class MainWindow(QMainWindow):
 
     def _state_changed(self, state: str) -> None:
         messages = {
-            "idle": "Engine đã sẵn sàng.",
-            "loading_engine": "Đang kiểm tra và tải model VieNeu v3 Turbo...",
+            "idle": "Sẵn sàng tạo giọng nói.",
+            "loading_engine": "Đang kiểm tra và tải model vào GPU...",
             "importing_document": "Đang đọc và trích xuất văn bản từ tệp...",
             "synthesizing": "Đang tạo giọng nói...",
             "enrolling_voice": "Đang rút và lưu đặc điểm giọng...",
@@ -592,17 +594,6 @@ class MainWindow(QMainWindow):
             "cancelled": "warning",
         }
         self._set_status_style(status_style[state])
-        engine_status = {
-            "idle": ("Sẵn sàng", "success"),
-            "loading_engine": ("Đang tải", "busy"),
-            "importing_document": ("Đang nhập tệp", "busy"),
-            "synthesizing": ("Đang xử lý", "busy"),
-            "enrolling_voice": ("Đang tạo giọng", "busy"),
-            "completed": ("Sẵn sàng", "success"),
-            "error": ("Có lỗi", "error"),
-            "cancelled": ("Đã dừng", "neutral"),
-        }
-        self.active_model_card.set_status(*engine_status[state])
         busy = state in {
             "loading_engine",
             "importing_document",

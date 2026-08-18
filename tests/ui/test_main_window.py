@@ -518,6 +518,16 @@ def test_settings_sections_are_separate_cards(qtbot, settings: Settings) -> None
     assert window.voice_selector.title() == "Chọn giọng"
     assert window.voice_style.objectName() == "voiceStyleCard"
     assert window.voice_style.title() == "Phong cách giọng nói"
+    assert window.voice_style.reset_button.text() == "Đặt lại"
+    assert window.voice_style.reset_button.property("variant") == "secondary"
+    assert (
+        window.voice_style.reset_button.geometry().top()
+        > window.voice_style.volume_slider.geometry().bottom()
+    )
+    assert (
+        window.voice_style.reset_button.geometry().center().x()
+        > window.voice_style.style_combo.geometry().center().x()
+    )
     assert window.voice_selector.voice_combo.parent() is window.voice_selector
     assert window.voice_style.style_combo.parent() is window.voice_style
     assert window.voice_style.speed_slider.parent() is window.voice_style
@@ -538,7 +548,16 @@ def test_model_selection_is_only_on_settings_page(qtbot, settings: Settings) -> 
     window, _ = _window(qtbot, settings)
 
     assert window.page_stack.count() == 3
-    assert window.active_model_card.model_label.text() == "Stub TTS Engine"
+    assert window.active_model_card.title_label.text() == "Thiết bị xử lý"
+    assert window.active_model_card.title_label.objectName() == "activeModelTitle"
+    assert window.active_model_card.title_label.font().bold()
+    assert (
+        window.active_model_card.title_label.palette().windowText().color().name()
+        == THEME.success.lower()
+    )
+    assert window.active_model_card.runtime_label.text() == "CPU · Test CPU · 8 GB RAM"
+    assert window.active_model_card.findChild(QLabel, "activeModelName") is None
+    assert window.active_model_card.findChild(QLabel, "engineStatus") is None
     assert window.findChild(ChevronComboBox, "engineCombo") is None
 
     window.nav_settings_button.click()
@@ -562,6 +581,40 @@ def test_style_selection_is_independent_from_voice(
 
     assert window.voice_style.current_style_id() == "tin_tuc"
     assert window.voice_selector.current_voice_id() == original_voice
+
+
+def test_reset_button_restores_voice_style_defaults(
+    qtbot, settings: Settings
+) -> None:  # type: ignore[no-untyped-def]
+    window, _ = _window(qtbot, settings)
+    voice_style = window.voice_style
+    default_speed = round(settings.audio.default_speed * 10)
+    default_pitch = round(settings.audio.default_pitch_semitones)
+    default_volume = round(settings.audio.default_volume_db)
+
+    assert not voice_style.reset_button.isEnabled()
+    assert voice_style.reset_button.objectName() == "resetVoiceStyleButton"
+    assert (
+        voice_style.reset_button.accessibleName()
+        == "Đặt lại phong cách giọng nói về mặc định"
+    )
+
+    voice_style.style_combo.setCurrentIndex(
+        voice_style.style_combo.findData("tin_tuc")
+    )
+    voice_style.speed_slider.setValue(default_speed + 1)
+    voice_style.pitch_slider.setValue(default_pitch + 1)
+    voice_style.volume_slider.setValue(default_volume - 1)
+
+    assert voice_style.reset_button.isEnabled()
+
+    voice_style.reset_button.click()
+
+    assert voice_style.current_style_id() == "tu_nhien"
+    assert voice_style.speed_slider.value() == default_speed
+    assert voice_style.pitch_slider.value() == default_pitch
+    assert voice_style.volume_slider.value() == default_volume
+    assert not voice_style.reset_button.isEnabled()
 
 
 def test_ui_stays_responsive_during_synthesis(qtbot, settings: Settings) -> None:  # type: ignore[no-untyped-def]

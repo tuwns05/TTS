@@ -164,6 +164,11 @@ def build_stylesheet(t: Theme = THEME) -> str:
         font-size: {t.font_size_section}px;
         font-weight: 600;
     }}
+    QLabel#activeModelTitle {{
+        color: {t.success};
+        font-size: {t.font_size_section}px;
+        font-weight: 700;
+    }}
     QLabel[role="caption"] {{
         font-size: {t.font_size_caption}px;
         color: {t.text_secondary};
@@ -332,6 +337,15 @@ def build_stylesheet(t: Theme = THEME) -> str:
     QPushButton[variant="ghost"]:hover {{
         background: {t.error_soft};
         color: {t.error};
+    }}
+    QPushButton#resetVoiceStyleButton {{
+        background: {t.content_bg};
+        color: {t.text_secondary};
+        padding: {t.space_1}px {t.space_2}px;
+    }}
+    QPushButton#resetVoiceStyleButton:hover {{
+        background: {t.accent_soft};
+        color: {t.accent};
     }}
     QPushButton[variant="destructive"] {{
         background: {t.content_bg};

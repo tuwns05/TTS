@@ -32,51 +32,54 @@ from vntts.ui.controls import ChevronComboBox
 
 
 class ActiveModelCard(QFrame):
-    """Read-only summary of the model loaded from the Settings page."""
+    """Show only the active state and the hardware used for inference."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("activeModelCard")
         self.setProperty("card", True)
-        title = QLabel("Model đang hoạt động", self)
-        title.setProperty("role", "section")
-        self.model_label = QLabel("Chưa load model", self)
-        self.model_label.setObjectName("activeModelName")
-        self.runtime_label = QLabel("Mở Cài đặt để chọn model và thiết bị.", self)
+        self.title_label = QLabel("Thiết bị xử lý", self)
+        self.title_label.setObjectName("activeModelTitle")
+        self.runtime_label = QLabel("Đang kiểm tra phần cứng...", self)
         self.runtime_label.setObjectName("helperText")
         self.runtime_label.setWordWrap(True)
-        self.status_badge = QLabel("Đang chờ", self)
-        self.status_badge.setObjectName("engineStatus")
-        self.status_badge.setProperty("state", "neutral")
-        header = QHBoxLayout()
-        header.addWidget(title)
-        header.addStretch()
-        header.addWidget(self.status_badge)
+        self._runtime_info: EngineRuntimeInfo | None = None
+        self._hardware: HardwareInfo | None = None
         layout = QVBoxLayout(self)
         layout.setContentsMargins(THEME.space_3, THEME.space_3, THEME.space_3, THEME.space_3)
         layout.setSpacing(THEME.space_1)
-        layout.addLayout(header)
-        layout.addWidget(self.model_label)
+        layout.addWidget(self.title_label)
         layout.addWidget(self.runtime_label)
 
     def set_runtime(self, info: EngineRuntimeInfo | None) -> None:
-        if info is None:
-            self.model_label.setText("Chưa load model")
-            self.runtime_label.setText("Mở Cài đặt để chọn model và thiết bị.")
-            return
-        self.model_label.setText(info.display_name)
-        backend = "PyTorch" if info.backend == "pytorch" else info.backend.upper()
-        target = f"GPU · {info.device_name}" if info.is_gpu else "CPU"
-        details = f"{target} · {backend}"
-        if info.fallback_reason:
-            details += f"\n{info.fallback_reason}"
-        self.runtime_label.setText(details)
+        self._runtime_info = info
+        self._refresh_hardware_text()
 
-    def set_status(self, text: str, state: str) -> None:
-        self.status_badge.setText(text)
-        self.status_badge.setProperty("state", state)
-        self.status_badge.style().unpolish(self.status_badge)
-        self.status_badge.style().polish(self.status_badge)
+    def set_hardware(self, hardware: HardwareInfo | None) -> None:
+        self._hardware = hardware
+        self._refresh_hardware_text()
+
+    def _refresh_hardware_text(self) -> None:
+        info = self._runtime_info
+        hardware = self._hardware
+        if info is None and hardware is None:
+            self.runtime_label.setText("Đang kiểm tra phần cứng...")
+            return
+        if info is not None and info.is_gpu:
+            name = info.device_name
+            vram = (
+                f" · {hardware.vram_gb:.1f} GB VRAM"
+                if hardware is not None and hardware.vram_gb is not None
+                else ""
+            )
+            self.runtime_label.setText(f"GPU · {name}{vram}")
+            return
+        if hardware is not None:
+            self.runtime_label.setText(
+                f"CPU · {hardware.cpu_name} · {hardware.ram_gb:g} GB RAM"
+            )
+            return
+        self.runtime_label.setText(f"CPU · {info.device_name}")
 
 
 class ModelSettingsPage(QWidget):
@@ -273,6 +276,18 @@ class VoiceStyleWidget(QGroupBox):
     def __init__(self, defaults: AudioSettings, parent: QWidget | None = None) -> None:
         super().__init__("Phong cách giọng nói", parent)
         self.setObjectName("voiceStyleCard")
+        self._defaults = defaults
+
+        self.reset_button = QPushButton("Đặt lại", self)
+        self.reset_button.setObjectName("resetVoiceStyleButton")
+        self.reset_button.setProperty("variant", "secondary")
+        self.reset_button.setAccessibleName(
+            "Đặt lại phong cách giọng nói về mặc định"
+        )
+        self.reset_button.setToolTip(
+            "Đặt lại phong cách đọc, tốc độ, cao độ, âm lượng về mặc định"
+        )
+        self.reset_button.setEnabled(False)
 
         helper = QLabel("Chọn cách thể hiện mà không thay đổi giọng đã chọn.", self)
         helper.setObjectName("helperText")
@@ -358,6 +373,19 @@ class VoiceStyleWidget(QGroupBox):
         )
         sliders.setColumnStretch(1, 1)
         layout.addLayout(sliders)
+        reset_row = QHBoxLayout()
+        reset_row.setContentsMargins(0, 0, 0, 0)
+        reset_row.addStretch()
+        reset_row.addWidget(self.reset_button)
+        layout.addLayout(reset_row)
+
+        self.style_combo.currentIndexChanged.connect(
+            self._refresh_reset_button_state
+        )
+        self.speed_slider.valueChanged.connect(self._refresh_reset_button_state)
+        self.pitch_slider.valueChanged.connect(self._refresh_reset_button_state)
+        self.volume_slider.valueChanged.connect(self._refresh_reset_button_state)
+        self.reset_button.clicked.connect(self._reset_to_defaults)
 
     def set_supported_styles(self, style_ids: tuple[str, ...]) -> None:
         """Show only styles implemented by the selected engine."""
@@ -386,6 +414,27 @@ class VoiceStyleWidget(QGroupBox):
 
         value = self.style_combo.currentData()
         return str(value) if value is not None else "tu_nhien"
+
+    def _reset_to_defaults(self) -> None:
+        default_style_index = self.style_combo.findData("tu_nhien")
+        if default_style_index >= 0:
+            self.style_combo.setCurrentIndex(default_style_index)
+        self.speed_slider.setValue(round(self._defaults.default_speed * 10))
+        self.pitch_slider.setValue(round(self._defaults.default_pitch_semitones))
+        self.volume_slider.setValue(round(self._defaults.default_volume_db))
+        self._refresh_reset_button_state()
+
+    def _refresh_reset_button_state(self) -> None:
+        is_dirty = (
+            self.current_style_id() != "tu_nhien"
+            or self.speed_slider.value()
+            != round(self._defaults.default_speed * 10)
+            or self.pitch_slider.value()
+            != round(self._defaults.default_pitch_semitones)
+            or self.volume_slider.value()
+            != round(self._defaults.default_volume_db)
+        )
+        self.reset_button.setEnabled(is_dirty)
 
     def _slider(
         self,
