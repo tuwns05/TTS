@@ -43,11 +43,13 @@ class Theme:
     panel_bg: str = "#FAFAFA"       # sidebar / toolbar background
     content_bg: str = "#FFFFFF"     # main content surface, cards
     border: str = "#E5E5EA"         # hairline border between surfaces
+    border_strong: str = "#C7C7CC"  # emphasized input/card boundary
     overlay_bg: str = "#FFFFFF"     # menus, popovers, dialogs (elevated)
 
     # Text
     text_primary: str = "#1D1D1F"
     text_secondary: str = "#6E6E73"
+    text_muted: str = "#8E8E93"
     text_on_accent: str = "#FFFFFF"
     text_disabled: str = "#B9B9BE"
 
@@ -57,6 +59,17 @@ class Theme:
     accent_hover: str = "#3396FF"
     accent_pressed: str = "#0868CC"
     accent_soft: str = "rgba(10, 132, 255, 0.12)"    # selection / active-nav bg
+    focus_ring: str = "#0A84FF"
+
+    # Semantic state colors
+    success: str = "#248A3D"
+    success_soft: str = "rgba(36, 138, 61, 0.12)"
+    warning: str = "#A05A00"
+    warning_soft: str = "rgba(160, 90, 0, 0.12)"
+    error: str = "#D70015"
+    error_soft: str = "rgba(215, 0, 21, 0.10)"
+    info: str = "#0868CC"
+    info_soft: str = "rgba(10, 132, 255, 0.12)"
 
     # Radius (comfortable/consumer: softer than a "technical" 6px)
     radius_sm: int = 6     # inputs, small buttons, list rows
@@ -84,6 +97,11 @@ class Theme:
     combo_arrow_size: int = 8
     combo_popup_row_height: int = 38
     combo_max_visible_items: int = 8
+    icon_size: int = 18
+    content_reading_width: int = 760
+    clone_profile_row_height: int = 84
+    clone_profile_list_max_rows: int = 4
+    narrow_content_breakpoint: int = 620
     control_stroke_width: float = 1.5
     slider_track_height: int = 4
     slider_handle_size: int = 14
@@ -191,6 +209,25 @@ def build_stylesheet(t: Theme = THEME) -> str:
         border: 1px solid {t.border};
         border-radius: {t.radius_md}px;
     }}
+    QFrame[fileSelector="true"] {{
+        background: {t.panel_bg};
+        border: 1px solid {t.border_strong};
+        border-radius: {t.radius_sm}px;
+    }}
+    QFrame[fileSelector="true"][hasFile="true"] {{
+        background: {t.info_soft};
+        border-color: {t.accent};
+    }}
+    QLabel#voiceSampleFileName {{
+        background: transparent;
+        border: none;
+        font-weight: 500;
+    }}
+    QFrame[emptyState="true"] {{
+        background: {t.panel_bg};
+        border: 1px solid {t.border};
+        border-radius: {t.radius_sm}px;
+    }}
     QWidget[settingsSection="true"], QGroupBox[settingsSection="true"] {{
         background: transparent;
         border: none;
@@ -285,6 +322,25 @@ def build_stylesheet(t: Theme = THEME) -> str:
     QPushButton[variant="secondary"]:hover {{
         background: rgba(0, 0, 0, 0.03);
     }}
+    QPushButton[variant="ghost"] {{
+        background: transparent;
+        color: {t.text_secondary};
+        border: none;
+        padding-left: {t.space_2}px;
+        padding-right: {t.space_2}px;
+    }}
+    QPushButton[variant="ghost"]:hover {{
+        background: {t.error_soft};
+        color: {t.error};
+    }}
+    QPushButton[variant="destructive"] {{
+        background: {t.content_bg};
+        color: {t.error};
+        border: 1px solid {t.error};
+    }}
+    QPushButton[variant="destructive"]:hover {{
+        background: {t.error_soft};
+    }}
     QPushButton:focus {{
         outline: none;
         border: 1px solid {t.accent};
@@ -355,13 +411,29 @@ def build_stylesheet(t: Theme = THEME) -> str:
     }}
     QLabel#engineStatus[state="busy"], QLabel#statusLabel[state="busy"],
     QLabel#profileStatusLabel[state="busy"] {{
-        color: {t.accent_pressed};
-        background: {t.accent_soft};
+        color: {t.info};
+        background: {t.info_soft};
     }}
     QLabel#engineStatus[state="success"], QLabel#statusLabel[state="success"],
     QLabel#engineBadge[state="success"], QLabel#profileStatusLabel[state="success"] {{
-        color: {t.accent_pressed};
-        background: {t.accent_soft};
+        color: {t.success};
+        background: {t.success_soft};
+    }}
+    QLabel#engineStatus[state="error"], QLabel#statusLabel[state="error"],
+    QLabel#profileStatusLabel[state="error"] {{
+        color: {t.error};
+        background: {t.error_soft};
+    }}
+    QLabel#engineStatus[state="warning"], QLabel#statusLabel[state="warning"],
+    QLabel#profileStatusLabel[state="warning"] {{
+        color: {t.warning};
+        background: {t.warning_soft};
+    }}
+    QLabel[profileState="true"] {{
+        color: {t.success};
+        background: transparent;
+        border: none;
+        font-size: {t.font_size_caption}px;
     }}
 
     QSlider::groove:horizontal {{
@@ -403,6 +475,63 @@ def build_stylesheet(t: Theme = THEME) -> str:
     QListWidget::item:selected {{
         background: {t.accent_soft};
         color: {t.accent_pressed};
+    }}
+
+    /* Voice-profile rows use real child cards, so the native list item must
+       stay transparent and leave all framing/selection paint to the card. */
+    QListWidget#voiceProfileList {{
+        selection-background-color: transparent;
+        selection-color: {t.text_primary};
+    }}
+    QListWidget#voiceProfileList::item,
+    QListWidget#voiceProfileList::item:hover,
+    QListWidget#voiceProfileList::item:selected {{
+        background: transparent;
+        border: none;
+        padding: 0;
+        min-height: 0;
+    }}
+    QFrame#voiceProfileRow {{
+        background: {t.content_bg};
+        border: 1px solid {t.border_strong};
+        border-radius: {t.radius_sm}px;
+    }}
+    QFrame#voiceProfileRow[selected="true"] {{
+        background: {t.accent_soft};
+        border: 1px solid {t.accent};
+    }}
+    QLabel#voiceProfileRowName {{
+        background: transparent;
+        border: none;
+        font-weight: 500;
+    }}
+    QPushButton#previewVoiceProfileButton {{
+        min-height: 32px;
+        max-height: 32px;
+        padding: 0 {t.space_3}px;
+    }}
+    QToolButton#voiceProfileMenuButton {{
+        min-width: 34px;
+        max-width: 34px;
+        min-height: 34px;
+        max-height: 34px;
+        padding: 0;
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: {t.radius_sm}px;
+        font-size: 18px;
+        font-weight: 600;
+    }}
+    QToolButton#voiceProfileMenuButton:hover {{
+        background: rgba(0, 0, 0, 0.04);
+        border-color: {t.border};
+    }}
+    QToolButton#voiceProfileMenuButton:focus {{
+        border-color: {t.focus_ring};
+    }}
+    QToolButton#voiceProfileMenuButton::menu-indicator {{
+        image: none;
+        width: 0;
     }}
 
     /* ---------- Scrollbars: thin, unobtrusive ---------- */

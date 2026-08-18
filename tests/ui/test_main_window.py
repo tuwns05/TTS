@@ -13,14 +13,19 @@ from PySide6.QtWidgets import (
     QApplication,
     QBoxLayout,
     QFileDialog,
+    QInputDialog,
+    QLabel,
+    QMenu,
+    QMessageBox,
     QPushButton,
     QScrollArea,
     QStyle,
+    QToolButton,
 )
 
 from tests.stubs import StubTTSEngine
 from vntts.config.settings import Settings
-from vntts.config.theme import build_stylesheet
+from vntts.config.theme import THEME, build_stylesheet
 from vntts.db.models import AudioEffects, HardwareInfo, SynthesisResult
 from vntts.engines.factory import EngineFactory, EngineRegistry
 from vntts.services.synthesis import SynthesizeSpeech
@@ -157,6 +162,158 @@ def test_compose_page_fits_standard_viewport_without_scrolling(
     assert window._player_card.isVisible()
 
 
+def test_voice_clone_selected_file_can_be_cleared(
+    qtbot, settings: Settings, tmp_path, monkeypatch
+) -> None:  # type: ignore[no-untyped-def]
+    window, _ = _window(qtbot, settings)
+    sample = tmp_path / "voice.mp3"
+    sample.write_bytes(b"sample")
+    monkeypatch.setattr(
+        QFileDialog,
+        "getOpenFileName",
+        lambda *args, **kwargs: (str(sample), "Audio"),
+    )
+
+    page = window.voice_clone_page
+    page.name_input.setText("Giọng thử")
+    page.upload_button.click()
+
+    assert page.audio_label.text() == "voice.mp3"
+    assert not page.audio_file_card.isHidden()
+    assert page.audio_meta_label.text() == "Mẫu giọng đã sẵn sàng"
+    assert page.upload_button.text() == "Thay đổi"
+    assert page.audio_file_card.property("hasFile") is True
+    assert page.clear_audio_button.text() == "Xóa"
+    assert page.clear_audio_button.icon().isNull()
+    assert not page.clear_audio_button.isHidden()
+    assert page.clear_audio_button.isEnabled()
+    assert page.create_button.isEnabled()
+
+    page.clear_audio_button.click()
+
+    assert page.audio_label.text() == "Chưa chọn mẫu giọng"
+    assert not page.audio_file_card.isHidden()
+    assert "WAV, MP3, FLAC" in page.audio_meta_label.text()
+    assert page.upload_button.text() == "Chọn file"
+    assert page.audio_file_card.property("hasFile") is False
+    assert page.clear_audio_button.isHidden()
+    assert "Chờ mẫu giọng" in page.processing_label.text()
+    assert not page.clear_audio_button.isEnabled()
+    assert not page.create_button.isEnabled()
+    assert sample.is_file()
+
+
+def test_voice_clone_empty_state_and_responsive_layout(
+    qtbot, settings: Settings
+) -> None:  # type: ignore[no-untyped-def]
+    window, _ = _window(qtbot, settings)
+    page = window.voice_clone_page
+    window.nav_clone_button.click()
+
+    assert not page.empty_profiles.isHidden()
+    assert page.profile_list.isHidden()
+    assert page.profile_count_label.text() == "0 hồ sơ"
+    assert page.create_button.property("variant") == "primary"
+    assert page._form_footer.indexOf(page.processing_label) >= 0
+    assert page._form_footer.indexOf(page.create_button) >= 0
+
+    window.resize(760, 700)
+    qtbot.waitUntil(lambda: page._responsive_mode == "narrow", timeout=1_000)
+    assert window._clone_scroll_area.horizontalScrollBar().maximum() == 0
+    assert page._file_selector_layout.direction() == QBoxLayout.Direction.TopToBottom
+    assert page._form_footer.direction() == QBoxLayout.Direction.TopToBottom
+
+    window.resize(1180, 760)
+    qtbot.waitUntil(lambda: page._responsive_mode == "wide", timeout=1_000)
+    assert page._file_selector_layout.direction() == QBoxLayout.Direction.LeftToRight
+    assert page._form_footer.direction() == QBoxLayout.Direction.LeftToRight
+
+
+def test_voice_clone_enrollment_busy_and_error_states(
+    qtbot, settings: Settings, tmp_path, monkeypatch
+) -> None:  # type: ignore[no-untyped-def]
+    window, _ = _window(qtbot, settings)
+    page = window.voice_clone_page
+    sample = tmp_path / "voice.wav"
+    sample.write_bytes(b"sample")
+    monkeypatch.setattr(
+        QFileDialog,
+        "getOpenFileName",
+        lambda *args, **kwargs: (str(sample), "Audio"),
+    )
+
+    page.name_input.setText("Giọng thử")
+    page.upload_button.click()
+    page.create_button.click()
+
+    assert page._enrolling
+    assert "Đang tạo hồ sơ" in page.processing_label.text()
+    assert page.processing_label.property("state") == "busy"
+    assert not page.name_input.isEnabled()
+    assert not page.upload_button.isEnabled()
+    assert not page.create_button.isEnabled()
+
+    page.enrollment_failed("Mẫu âm thanh không hợp lệ")
+
+    assert not page._enrolling
+    assert "Mẫu âm thanh không hợp lệ" in page.processing_label.text()
+    assert page.processing_label.property("state") == "error"
+    assert page.name_input.isEnabled()
+    assert page.upload_button.isEnabled()
+    assert page.create_button.isEnabled()
+
+
+def test_voice_profile_preview_and_overflow_actions(
+    qtbot, settings: Settings, monkeypatch
+) -> None:  # type: ignore[no-untyped-def]
+    window, _ = _window(qtbot, settings)
+    page = window.voice_clone_page
+    profile = page._store.create(
+        "Giọng ban đầu",
+        np.array([0.1], dtype=np.float32),
+        np.array([[1]], dtype=np.int64),
+    )
+    page._reload_profiles(profile.profile_id)
+    previewed: list[object] = []
+    stopped: list[bool] = []
+    page.preview_requested.connect(previewed.append)
+    page.stop_preview_requested.connect(lambda: stopped.append(True))
+
+    page.preview_button.click()
+    assert previewed == [profile]
+    assert page.preview_button.text() == "Đang tạo..."
+    page.set_preview_state("playing")
+    assert page.preview_button.text() == "Dừng"
+    assert page.preview_button.isEnabled()
+    page.preview_button.click()
+    assert stopped
+    page.set_preview_state("stopped")
+    assert page.preview_button.text() == "Nghe thử"
+
+    monkeypatch.setattr(
+        QInputDialog,
+        "getText",
+        lambda *args, **kwargs: ("Giọng đã đổi tên", True),
+    )
+    row = page.profile_list.itemWidget(page.profile_list.item(0))
+    menu = row.findChild(QToolButton, "voiceProfileMenuButton").menu()
+    menu.actions()[0].trigger()
+    renamed_row = page.profile_list.itemWidget(page.profile_list.item(0))
+    assert "Giọng đã đổi tên" in renamed_row.findChild(
+        QLabel, "voiceProfileRowName"
+    ).text()
+
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        lambda *args, **kwargs: QMessageBox.StandardButton.Yes,
+    )
+    renamed_menu = renamed_row.findChild(QToolButton, "voiceProfileMenuButton").menu()
+    renamed_menu.actions()[-1].trigger()
+    assert page.profile_list.count() == 0
+    assert not page.empty_profiles.isHidden()
+
+
 def test_sidebar_opens_voice_clone_page_and_creates_profile(
     qtbot, settings: Settings, tmp_path, monkeypatch
 ) -> None:  # type: ignore[no-untyped-def]
@@ -185,8 +342,38 @@ def test_sidebar_opens_voice_clone_page_and_creates_profile(
         timeout=3_000,
     )
     assert window.voice_clone_page.profile_list.count() == 1
-    assert "Giọng của tôi" in window.voice_clone_page.profile_list.item(0).text()
-    assert "Sẵn sàng" in window.voice_clone_page.profile_list.item(0).text()
+    profile_row = window.voice_clone_page.profile_list.itemWidget(
+        window.voice_clone_page.profile_list.item(0)
+    )
+    assert profile_row is not None
+    profile_name = profile_row.findChild(QLabel, "voiceProfileRowName")
+    profile_state = profile_row.findChild(QLabel, "voiceProfileState")
+    assert profile_name is not None
+    assert profile_state is not None
+    assert "Giọng của tôi" in profile_name.text()
+    assert "Sẵn sàng" in profile_state.text()
+    assert window.voice_clone_page.profile_list.item(0).text() == ""
+    assert (
+        window.voice_clone_page.profile_list.item(0).sizeHint().height()
+        == THEME.clone_profile_row_height
+    )
+    assert profile_row.findChild(QPushButton, "renameVoiceProfileButton") is None
+    assert profile_row.findChild(QPushButton, "deleteVoiceProfileButton") is None
+    preview_button = profile_row.findChild(QPushButton, "previewVoiceProfileButton")
+    more_button = profile_row.findChild(QToolButton, "voiceProfileMenuButton")
+    assert preview_button is not None
+    assert more_button is not None
+    assert preview_button.text() == "Nghe thử"
+    assert more_button.text() == "⋮"
+    assert more_button.icon().isNull()
+    assert isinstance(more_button.menu(), QMenu)
+    assert [action.text() for action in more_button.menu().actions()] == [
+        "Đổi tên",
+        "",
+        "Xóa hồ sơ",
+    ]
+    assert window.voice_clone_page.profile_count_label.text() == "1 hồ sơ"
+    assert window.voice_clone_page.empty_profiles.isHidden()
     assert "8 giây" in window.voice_clone_page.processing_label.text()
     assert window.voice_clone_page.profile_list.currentItem() is not None
     assert window.voice_clone_page.preview_button.isEnabled()
@@ -202,6 +389,8 @@ def test_sidebar_opens_voice_clone_page_and_creates_profile(
     window.voice_clone_page.preview_button.click()
 
     assert len(synthesis_calls) == 1
+    assert window.voice_clone_page.preview_button.text() == "Đang tạo..."
+    assert not window.voice_clone_page.preview_button.isEnabled()
     assert synthesis_calls[0][1]["voice_artifact_path"].endswith(".npz")
     assert synthesis_calls[0][1]["engine_id_override"] == "vieneu-v3"
     assert window._playback.current_result is compose_result

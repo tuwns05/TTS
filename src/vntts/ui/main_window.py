@@ -230,6 +230,9 @@ class MainWindow(QMainWindow):
         self._clone_scroll_area.setObjectName("voiceCloneScrollArea")
         self._clone_scroll_area.setWidgetResizable(True)
         self._clone_scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        self._clone_scroll_area.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
         self._clone_scroll_area.setWidget(self.voice_clone_page)
         self.model_settings_page = ModelSettingsPage(self)
         self._model_settings_scroll_area = QScrollArea(self)
