@@ -19,6 +19,7 @@ dependencies = [
     "python-docx>=1.1.2,<2",
     "pypdf>=5,<7",
     "lameenc>=1.7,<2",
+    "cryptography>=46,<50",
 ]
 
 [project.optional-dependencies]

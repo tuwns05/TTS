@@ -50,6 +50,13 @@ def test_payment_endpoint_can_be_configured_from_environment(
         "https://example.com/api/payment/request"
     )
     assert result.payment.request_timeout_seconds == 10
+    assert result.payment.plan_prices_vnd == {
+        "monthly": 99_000,
+        "quarterly": 249_000,
+        "semiannual": 449_000,
+        "yearly": 799_000,
+        "lifetime": 1_999_000,
+    }
 
 
 def test_production_defaults_to_bundled_vieneu_v3(

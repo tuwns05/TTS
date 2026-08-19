@@ -39,6 +39,13 @@ _SAFE_DEFAULTS: dict[str, object] = {
     "payment": {
         "api_endpoint": "",
         "request_timeout_seconds": 10,
+        "plan_prices_vnd": {
+            "monthly": 99_000,
+            "quarterly": 249_000,
+            "semiannual": 449_000,
+            "yearly": 799_000,
+            "lifetime": 1_999_000,
+        },
     },
     "audio": {
         "default_speed": 1.0,
@@ -102,6 +109,7 @@ class PaymentSettings:
 
     api_endpoint: str
     request_timeout_seconds: float
+    plan_prices_vnd: dict[str, int]
 
 
 @dataclass(frozen=True)
@@ -257,6 +265,27 @@ def load_settings(config_path: Path | None = None, *, create_directories: bool =
         "payment.request_timeout_seconds",
         positive=True,
     )
+    payment_prices = _section(payment, "plan_prices_vnd")
+    normalized_payment_prices: dict[str, int] = {}
+    previous_price = 0
+    for plan_id in (
+        "monthly",
+        "quarterly",
+        "semiannual",
+        "yearly",
+        "lifetime",
+    ):
+        price = payment_prices.get(plan_id)
+        if type(price) is not int or price <= 0:
+            raise ConfigurationError(
+                f"'payment.plan_prices_vnd.{plan_id}' phải là số nguyên dương."
+            )
+        if price <= previous_price:
+            raise ConfigurationError(
+                "Giá các gói thanh toán phải tăng dần theo thời hạn."
+            )
+        normalized_payment_prices[plan_id] = price
+        previous_price = price
     retention_days = int(_number(logging_config.get("retention_days"), "logging.retention_days", positive=True))
     level_value = os.getenv("VNTTS_LOG_LEVEL") or logging_config.get("level")
     if not isinstance(level_value, str) or not level_value.strip():
@@ -294,6 +323,7 @@ def load_settings(config_path: Path | None = None, *, create_directories: bool =
                 "payment.api_endpoint",
             ),
             request_timeout_seconds=payment_timeout,
+            plan_prices_vnd=normalized_payment_prices,
         ),
         hardware_recommendation=HardwareRecommendationSettings(
             high_tier=TierSettings(

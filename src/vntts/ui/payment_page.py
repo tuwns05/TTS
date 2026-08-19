@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
+from datetime import datetime
 
 from PySide6.QtCore import QThreadPool
 from PySide6.QtWidgets import (
-    QApplication,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -34,6 +35,13 @@ from vntts.utils.machine_info import get_mac_address
 from vntts.utils.worker import TaskWorker
 
 _EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+_PLAN_LABELS = {
+    "monthly": "1 tháng",
+    "quarterly": "3 tháng",
+    "semiannual": "6 tháng",
+    "yearly": "1 năm",
+    "lifetime": "Vĩnh viễn",
+}
 
 
 class PaymentPage(QWidget):
@@ -44,6 +52,7 @@ class PaymentPage(QWidget):
         payment_service: PaymentService,
         license_service: LicenseService,
         *,
+        plan_prices_vnd: Mapping[str, int],
         mac_address: str | None = None,
         thread_pool: QThreadPool | None = None,
         parent: QWidget | None = None,
@@ -52,6 +61,8 @@ class PaymentPage(QWidget):
         self.setObjectName("paymentPage")
         self._payment_service = payment_service
         self._license_service = license_service
+        self._plan_prices_vnd = dict(plan_prices_vnd)
+        self._mac_address = mac_address or get_mac_address()
         self._thread_pool = thread_pool or QThreadPool.globalInstance()
         self._payment_worker: TaskWorker | None = None
 
@@ -80,8 +91,22 @@ class PaymentPage(QWidget):
         self.plan_combo.setObjectName("paymentPlanCombo")
         self.plan_combo.setAccessibleName("Gói thanh toán")
         self.plan_combo.addItem("Chọn gói", None)
-        self.plan_combo.addItem("1 tháng", "monthly")
-        self.plan_combo.addItem("1 năm", "yearly")
+        for plan_id, label in _PLAN_LABELS.items():
+            price = self._plan_prices_vnd[plan_id]
+            self.plan_combo.addItem(
+                f"{label} · {self._format_vnd(price)}",
+                plan_id,
+            )
+        self.plan_price_label = QLabel(self.payment_card)
+        self.plan_price_label.setObjectName("paymentPlanPrice")
+        self.plan_price_label.setProperty("role", "caption")
+        self.plan_price_label.setText("Chọn gói để xem giá.")
+        plan_selector = QWidget(self.payment_card)
+        plan_selector_layout = QVBoxLayout(plan_selector)
+        plan_selector_layout.setContentsMargins(0, 0, 0, 0)
+        plan_selector_layout.setSpacing(THEME.space_1)
+        plan_selector_layout.addWidget(self.plan_combo)
+        plan_selector_layout.addWidget(self.plan_price_label)
 
         self.name_input = QLineEdit(self.payment_card)
         self.name_input.setObjectName("paymentNameInput")
@@ -93,29 +118,9 @@ class PaymentPage(QWidget):
         self.email_input.setPlaceholderText("example@gmail.com")
         self.email_input.setAccessibleName("Email")
 
-        self.mac_input = QLineEdit(self.payment_card)
-        self.mac_input.setObjectName("paymentMacAddress")
-        self.mac_input.setReadOnly(True)
-        self.mac_input.setAccessibleName("Địa chỉ MAC của máy")
-        self.mac_input.setText(mac_address or get_mac_address())
-
-        self.copy_mac_button = QPushButton("Sao chép", self.payment_card)
-        self.copy_mac_button.setObjectName("copyMacButton")
-        self.copy_mac_button.setProperty("variant", "secondary")
-        self.copy_mac_button.setAccessibleName("Sao chép địa chỉ MAC")
-
-        mac_row = QHBoxLayout()
-        mac_row.setContentsMargins(0, 0, 0, 0)
-        mac_row.setSpacing(THEME.space_2)
-        mac_row.addWidget(self.mac_input, 1)
-        mac_row.addWidget(self.copy_mac_button)
-
-        self._add_field(form, 0, "Chọn gói", self.plan_combo)
+        self._add_field(form, 0, "Chọn gói", plan_selector)
         self._add_field(form, 1, "Họ và tên", self.name_input)
         self._add_field(form, 2, "Email", self.email_input)
-        mac_label = self._field_label("Địa chỉ MAC của máy", self.payment_card)
-        form.addWidget(mac_label, 3, 0)
-        form.addLayout(mac_row, 3, 1)
         form.setColumnStretch(1, 1)
         payment_layout.addLayout(form)
 
@@ -141,12 +146,15 @@ class PaymentPage(QWidget):
 
         self.license_card = self._card()
         license_layout = self._card_layout(self.license_card)
-        license_title = QLabel("Nhập License Key", self.license_card)
+        license_title = QLabel("Nhập mã kích hoạt", self.license_card)
+        license_title.setObjectName("licenseSectionTitle")
         license_title.setProperty("role", "section")
         license_hint = QLabel(
-            "Chức năng xác thực và mở khóa sẽ được bổ sung trong phiên bản sau.",
+            "Nhập mã kích hoạt được cung cấp theo hướng dẫn để xác thực "
+            "và kích hoạt ứng dụng.",
             self.license_card,
         )
+        license_hint.setObjectName("licenseSectionHint")
         license_hint.setProperty("role", "secondary")
         license_layout.addWidget(license_title)
         license_layout.addWidget(license_hint)
@@ -154,8 +162,8 @@ class PaymentPage(QWidget):
 
         self.license_key_input = QLineEdit(self.license_card)
         self.license_key_input.setObjectName("licenseKeyInput")
-        self.license_key_input.setPlaceholderText("Nhập License Key")
-        self.license_key_input.setAccessibleName("License Key")
+        self.license_key_input.setPlaceholderText("Nhập mã kích hoạt")
+        self.license_key_input.setAccessibleName("Mã kích hoạt")
         self.activate_button = QPushButton("Kích hoạt", self.license_card)
         self.activate_button.setObjectName("activateLicenseButton")
         self.activate_button.setProperty("variant", "primary")
@@ -165,7 +173,7 @@ class PaymentPage(QWidget):
         license_row.setSpacing(THEME.space_2)
         license_row.addWidget(self.license_key_input, 1)
         license_row.addWidget(self.activate_button)
-        license_layout.addWidget(self._field_label("License Key", self.license_card))
+        license_layout.addWidget(self._field_label("Mã kích hoạt", self.license_card))
         license_layout.addLayout(license_row)
 
         self.license_status_label = QLabel(self.license_card)
@@ -173,6 +181,39 @@ class PaymentPage(QWidget):
         self.license_status_label.setWordWrap(True)
         self.license_status_label.hide()
         license_layout.addWidget(self.license_status_label)
+
+        self.license_info_widget = QWidget(self.license_card)
+        self.license_info_widget.setObjectName("licenseInformation")
+        license_info_layout = QGridLayout(self.license_info_widget)
+        license_info_layout.setContentsMargins(0, 0, 0, 0)
+        license_info_layout.setHorizontalSpacing(THEME.space_3)
+        license_info_layout.setVerticalSpacing(THEME.space_2)
+        license_info_title = QLabel(
+            "Thông tin bản quyền",
+            self.license_info_widget,
+        )
+        license_info_title.setProperty("role", "section")
+        license_info_layout.addWidget(license_info_title, 0, 0, 1, 2)
+        self.license_plan_value = QLabel(self.license_info_widget)
+        self.license_customer_value = QLabel(self.license_info_widget)
+        self.license_paid_at_value = QLabel(self.license_info_widget)
+        self.license_expires_at_value = QLabel(self.license_info_widget)
+        license_values = (
+            ("Gói", self.license_plan_value),
+            ("Khách hàng", self.license_customer_value),
+            ("Ngày thanh toán", self.license_paid_at_value),
+            ("Hết hạn", self.license_expires_at_value),
+        )
+        for row, (label, value_widget) in enumerate(license_values, start=1):
+            license_info_layout.addWidget(
+                self._field_label(label, self.license_info_widget),
+                row,
+                0,
+            )
+            license_info_layout.addWidget(value_widget, row, 1)
+        license_info_layout.setColumnStretch(1, 1)
+        self.license_info_widget.hide()
+        license_layout.addWidget(self.license_info_widget)
 
         cards = QVBoxLayout()
         cards.setContentsMargins(0, 0, 0, 0)
@@ -206,7 +247,7 @@ class PaymentPage(QWidget):
         layout.addLayout(content_row)
         layout.addStretch()
 
-        self.copy_mac_button.clicked.connect(self._copy_mac_address)
+        self.plan_combo.currentIndexChanged.connect(self._update_plan_price)
         self.send_button.clicked.connect(self._submit_payment_request)
         self.activate_button.clicked.connect(self._activate_license)
 
@@ -257,14 +298,18 @@ class PaymentPage(QWidget):
         layout.addWidget(self._field_label(label, self.payment_card), row, 0)
         layout.addWidget(widget, row, 1)
 
-    def _copy_mac_address(self) -> None:
-        clipboard = QApplication.clipboard()
-        clipboard.setText(self.mac_input.text())
-        self._show_status(
-            self.payment_status_label,
-            "Đã sao chép địa chỉ MAC.",
-            "success",
+    def _update_plan_price(self) -> None:
+        plan = self.plan_combo.currentData()
+        if plan not in self._plan_prices_vnd:
+            self.plan_price_label.setText("Chọn gói để xem giá.")
+            return
+        self.plan_price_label.setText(
+            f"Giá gói: {self._format_vnd(self._plan_prices_vnd[str(plan)])}"
         )
+
+    @staticmethod
+    def _format_vnd(price: int) -> str:
+        return f"{price:,}".replace(",", ".") + " VNĐ"
 
     def _submit_payment_request(self) -> None:
         try:
@@ -297,7 +342,7 @@ class PaymentPage(QWidget):
             name=name,
             email=email,
             plan=str(plan),
-            mac_address=self.mac_input.text(),
+            mac_address=self._mac_address,
         )
 
     def _payment_succeeded(self, response: object) -> None:
@@ -333,11 +378,12 @@ class PaymentPage(QWidget):
             )
 
     def _activate_license(self) -> None:
+        self._clear_license_information()
         key = self.license_key_input.text().strip()
         if not key:
             self._show_status(
                 self.license_status_label,
-                "Vui lòng nhập License Key.",
+                "Vui lòng nhập mã kích hoạt.",
                 "error",
             )
             return
@@ -349,11 +395,51 @@ class PaymentPage(QWidget):
         self._show_activation_result(result)
 
     def _show_activation_result(self, result: LicenseActivationResult) -> None:
+        if result.activated:
+            self._show_status(
+                self.license_status_label,
+                f"✓ {result.message}",
+                "success",
+            )
+            self._show_license_information(result)
+            return
         self._show_status(
             self.license_status_label,
             result.message,
-            "success" if result.activated else "neutral",
+            "neutral",
         )
+
+    def _show_license_information(
+        self,
+        result: LicenseActivationResult,
+    ) -> None:
+        self.license_plan_value.setText(
+            _PLAN_LABELS.get(result.plan or "", "")
+        )
+        self.license_customer_value.setText(result.customer_name or "")
+        self.license_paid_at_value.setText(
+            self._format_license_date(result.paid_at)
+        )
+        expires_text = (
+            "Không thời hạn"
+            if result.plan == "lifetime"
+            else self._format_license_date(result.expires_at)
+        )
+        self.license_expires_at_value.setText(expires_text)
+        self.license_info_widget.show()
+
+    def _clear_license_information(self) -> None:
+        self.license_info_widget.hide()
+        self.license_plan_value.clear()
+        self.license_customer_value.clear()
+        self.license_paid_at_value.clear()
+        self.license_expires_at_value.clear()
+
+    @staticmethod
+    def _format_license_date(value: str | None) -> str:
+        if not value:
+            return ""
+        return datetime.fromisoformat(value).strftime("%d/%m/%Y")
 
     @staticmethod
     def _show_status(label: QLabel, message: str, state: str) -> None:

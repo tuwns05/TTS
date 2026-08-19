@@ -7,9 +7,8 @@ import json
 import pytest
 
 import vntts.services.payment_service as payment_module
-from vntts.services.license_service import LicenseService
 from vntts.services.payment_service import PaymentRequest, PaymentService
-from vntts.utils.exceptions import PaymentServiceError, ValidationError
+from vntts.utils.exceptions import PaymentServiceError
 
 
 @pytest.fixture
@@ -108,14 +107,3 @@ def test_rejects_invalid_server_response(
         PaymentService("https://example.com/api/payment/request").request_payment(
             payment_request
         )
-
-
-def test_license_service_is_explicit_placeholder() -> None:
-    service = LicenseService()
-
-    with pytest.raises(ValidationError, match="License Key"):
-        service.activate("  ")
-
-    result = service.activate("TEST-KEY")
-    assert not result.activated
-    assert "phiên bản sau" in result.message

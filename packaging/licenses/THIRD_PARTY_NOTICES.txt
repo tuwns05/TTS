@@ -250,6 +250,14 @@ executables without placing the application itself under the GPL merely because
 of the bootloader.
 Exact COPYING/license files: components/PyInstaller-*/
 
+25. cryptography
+----------------
+Package: cryptography
+Version in current production lock: 49.0.0
+Source: https://github.com/pyca/cryptography
+License expression: Apache-2.0 OR BSD-3-Clause
+Exact package license files: components/cryptography-*/
+
 Additional Python/runtime dependencies
 --------------------------------------
 The production lock contains transitive packages beyond this principal list.

@@ -255,6 +255,7 @@ class MainWindow(QMainWindow):
         self.payment_page = PaymentPage(
             self._payment_service,
             self._license_service,
+            plan_prices_vnd=settings.payment.plan_prices_vnd,
             mac_address=get_mac_address(),
             parent=self,
         )

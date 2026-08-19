@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QInputDialog,
     QLabel,
+    QLineEdit,
     QMenu,
     QMessageBox,
     QPushButton,
@@ -614,7 +615,15 @@ def test_payment_page_validates_and_uses_separate_services(
 
         def activate(self, key: str) -> LicenseActivationResult:
             self.keys.append(key)
-            return LicenseActivationResult(False, "Đã ghi nhận License Key.")
+            return LicenseActivationResult(
+                activated=True,
+                message="Xác thực mã kích hoạt thành công.",
+                customer_name="Test Customer",
+                plan="yearly",
+                paid_at="2026-08-19T14:48:00+07:00",
+                expires_at="2027-08-19T14:48:00+07:00",
+                mac="F0:68:E3:C4:D1:A1",
+            )
 
     payment_service = RecordingPaymentService()
     license_service = RecordingLicenseService()
@@ -632,6 +641,17 @@ def test_payment_page_validates_and_uses_separate_services(
     assert window.nav_payment_button.isChecked()
     assert not window.nav_contact_button.isChecked()
     assert page.payment_card.maximumWidth() == THEME.content_reading_width
+    assert page.license_card.findChild(
+        QLabel,
+        "licenseSectionTitle",
+    ).text() == "Nhập mã kích hoạt"
+    assert page.license_card.findChild(
+        QLabel,
+        "licenseSectionHint",
+    ).text() == (
+        "Nhập mã kích hoạt được cung cấp theo hướng dẫn để xác thực "
+        "và kích hoạt ứng dụng."
+    )
     assert (
         abs(
             page.payment_card.mapTo(
@@ -642,11 +662,23 @@ def test_payment_page_validates_and_uses_separate_services(
         )
         <= THEME.space_1
     )
-    assert page.mac_input.isReadOnly()
-    assert len(page.mac_input.text().split(":")) == 6
-
-    page.copy_mac_button.click()
-    assert QApplication.clipboard().text() == page.mac_input.text()
+    assert page.findChild(QLineEdit, "paymentMacAddress") is None
+    assert page.findChild(QPushButton, "copyMacButton") is None
+    assert [
+        page.plan_combo.itemData(index)
+        for index in range(page.plan_combo.count())
+    ] == [None, "monthly", "quarterly", "semiannual", "yearly", "lifetime"]
+    assert [
+        page.plan_combo.itemText(index)
+        for index in range(1, page.plan_combo.count())
+    ] == [
+        "1 tháng · 99.000 VNĐ",
+        "3 tháng · 249.000 VNĐ",
+        "6 tháng · 449.000 VNĐ",
+        "1 năm · 799.000 VNĐ",
+        "Vĩnh viễn · 1.999.000 VNĐ",
+    ]
+    assert page.plan_price_label.text() == "Chọn gói để xem giá."
 
     page.send_button.click()
     assert page.payment_status_label.text() == "Vui lòng nhập họ và tên."
@@ -661,6 +693,7 @@ def test_payment_page_validates_and_uses_separate_services(
     assert page.payment_status_label.text() == "Vui lòng chọn gói thanh toán."
 
     page.plan_combo.setCurrentIndex(page.plan_combo.findData("monthly"))
+    assert page.plan_price_label.text() == "Giá gói: 99.000 VNĐ"
     page.send_button.click()
     assert not page.send_button.isEnabled()
     assert page.send_button.text() == "Đang gửi..."
@@ -676,17 +709,30 @@ def test_payment_page_validates_and_uses_separate_services(
         "name": "Nguyễn Văn A",
         "email": "example@gmail.com",
         "plan": "monthly",
-        "mac_address": page.mac_input.text(),
+        "mac_address": payment_service.requests[0].mac_address,
     }
+    assert len(payment_service.requests[0].mac_address.split(":")) == 6
 
     page.activate_button.click()
-    assert page.license_status_label.text() == "Vui lòng nhập License Key."
+    assert page.license_status_label.text() == "Vui lòng nhập mã kích hoạt."
     assert license_service.keys == []
 
     page.license_key_input.setText("TEST-LICENSE-KEY")
     page.activate_button.click()
     assert license_service.keys == ["TEST-LICENSE-KEY"]
-    assert page.license_status_label.text() == "Đã ghi nhận License Key."
+    assert page.license_status_label.text() == (
+        "✓ Xác thực mã kích hoạt thành công."
+    )
+    assert page.license_info_widget.isVisible()
+    assert page.license_plan_value.text() == "1 năm"
+    assert page.license_customer_value.text() == "Test Customer"
+    assert page.license_paid_at_value.text() == "19/08/2026"
+    assert page.license_expires_at_value.text() == "19/08/2027"
+
+    page.license_key_input.clear()
+    page.activate_button.click()
+    assert not page.license_info_widget.isVisible()
+    assert page.license_status_label.text() == "Vui lòng nhập mã kích hoạt."
 
     window.nav_contact_button.click()
     assert window.page_stack.currentIndex() == 4
