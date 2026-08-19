@@ -36,6 +36,10 @@ _SAFE_DEFAULTS: dict[str, object] = {
         "default_engine": "vieneu-v3",
         "production_default_engine": "vieneu-v3",
     },
+    "payment": {
+        "api_endpoint": "",
+        "request_timeout_seconds": 10,
+    },
     "audio": {
         "default_speed": 1.0,
         "default_pitch_semitones": 0.0,
@@ -93,6 +97,14 @@ class AudioSettings:
 
 
 @dataclass(frozen=True)
+class PaymentSettings:
+    """Payment-request API configuration."""
+
+    api_endpoint: str
+    request_timeout_seconds: float
+
+
+@dataclass(frozen=True)
 class LoggingSettings:
     """Logging verbosity and retention policy."""
 
@@ -108,6 +120,7 @@ class Settings:
     paths: PathSettings
     tts: TTSSettings
     audio: AudioSettings
+    payment: PaymentSettings
     hardware_recommendation: HardwareRecommendationSettings
     logging: LoggingSettings
 
@@ -196,6 +209,7 @@ def load_settings(config_path: Path | None = None, *, create_directories: bool =
     paths = _section(config, "paths")
     tts = _section(config, "tts")
     audio = _section(config, "audio")
+    payment = _section(config, "payment")
     hardware = _section(config, "hardware_recommendation")
     high = _section(hardware, "high_tier")
     medium = _section(hardware, "medium_tier")
@@ -238,6 +252,11 @@ def load_settings(config_path: Path | None = None, *, create_directories: bool =
         raise ConfigurationError("Engine mặc định không được để trống.")
 
     sample_rate = int(_number(audio.get("default_sample_rate"), "audio.default_sample_rate", positive=True))
+    payment_timeout = _number(
+        payment.get("request_timeout_seconds"),
+        "payment.request_timeout_seconds",
+        positive=True,
+    )
     retention_days = int(_number(logging_config.get("retention_days"), "logging.retention_days", positive=True))
     level_value = os.getenv("VNTTS_LOG_LEVEL") or logging_config.get("level")
     if not isinstance(level_value, str) or not level_value.strip():
@@ -267,6 +286,14 @@ def load_settings(config_path: Path | None = None, *, create_directories: bool =
             _number(audio.get("default_pitch_semitones"), "audio.default_pitch_semitones"),
             _number(audio.get("default_volume_db"), "audio.default_volume_db"),
             sample_rate,
+        ),
+        payment=PaymentSettings(
+            api_endpoint=_optional_text(
+                os.getenv("VNTTS_PAYMENT_API_ENDPOINT")
+                or payment.get("api_endpoint"),
+                "payment.api_endpoint",
+            ),
+            request_timeout_seconds=payment_timeout,
         ),
         hardware_recommendation=HardwareRecommendationSettings(
             high_tier=TierSettings(

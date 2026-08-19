@@ -39,3 +39,7 @@ class ValidationError(AppError):
 
 class HardwareDetectionError(AppError):
     """Raised when essential hardware information cannot be collected."""
+
+
+class PaymentServiceError(AppError):
+    """Raised when a payment request cannot be delivered or decoded."""

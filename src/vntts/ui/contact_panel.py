@@ -107,7 +107,7 @@ class ContactPage(QWidget):
         details.setColumnStretch(2, 1)
 
         self.license_toggle_button = QPushButton(
-            "ĐIỀU KHOẢN & GIẤY PHÉP",
+            "ĐIỀU KHOẢN && GIẤY PHÉP",
             self.card,
         )
         self.license_toggle_button.setObjectName("contactLicenseToggle")
@@ -126,16 +126,23 @@ class ContactPage(QWidget):
         )
         self.license_link_label = QLabel(self.card)
         self.license_link_label.setObjectName("contactLicenseLink")
-        self.license_link_label.setTextFormat(Qt.TextFormat.RichText)
-        self.license_link_label.setOpenExternalLinks(True)
+        self.license_link_label.setTextFormat(Qt.TextFormat.PlainText)
+        self.license_link_label.setOpenExternalLinks(False)
         self.license_link_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+        self.license_link_label.setWordWrap(True)
+        self.license_link_label.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Preferred,
+        )
         self.license_link_label.setStyleSheet(
+            f"color: {THEME.text_secondary}; "
             f"font-size: {THEME.font_size_caption - 1}px;"
         )
         self.license_link_label.setText(
-            '<a href="https://doc.qt.io/qtforpython-6/overviews/qtdoc-lgpl.html" '
-            f'style="color: {THEME.accent}; text-decoration: none;">'
-            "Xem nội dung giấy phép LGPLv3 của Qt</a>"
+            "Phần mềm này sử dụng Qt/PySide6 và các thành phần "
+            "mã nguồn mở khác. "
+            "Thông tin giấy phép được cung cấp trong thư mục "
+            "_internal/licenses"
         )
         self.license_link_label.hide()
         self.license_toggle_button.toggled.connect(
@@ -160,11 +167,7 @@ class ContactPage(QWidget):
             0,
             Qt.AlignmentFlag.AlignRight,
         )
-        card_layout.addWidget(
-            self.license_link_label,
-            0,
-            Qt.AlignmentFlag.AlignRight,
-        )
+        card_layout.addWidget(self.license_link_label)
 
         content_row = QHBoxLayout()
         content_row.setContentsMargins(0, 0, 0, 0)

@@ -19,6 +19,8 @@ from vntts.db.models import EngineSynthesisOptions
 from vntts.engines.factory import EngineFactory, EngineLifecycleManager, EngineRegistry
 from vntts.engines.vieneu_engine import VieNeuV3Engine
 from vntts.services.hardware import HardwareDetector
+from vntts.services.license_service import LicenseService
+from vntts.services.payment_service import PaymentService
 from vntts.services.playback import PlaybackService
 from vntts.services.synthesis import SynthesizeSpeech
 from vntts.services.voice_enrollment import VoiceEnrollmentService
@@ -83,6 +85,11 @@ def build_application(argv: Sequence[str] | None = None) -> tuple[QApplication, 
         view_model,
         settings,
         voice_profile_store=voice_profile_store,
+        payment_service=PaymentService(
+            settings.payment.api_endpoint,
+            settings.payment.request_timeout_seconds,
+        ),
+        license_service=LicenseService(),
     )
 
     logger.info(

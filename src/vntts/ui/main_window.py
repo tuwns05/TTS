@@ -25,6 +25,8 @@ from vntts.db.models import (
     VoiceInfo,
 )
 from vntts.services.document_import import ImportedDocument
+from vntts.services.license_service import LicenseService
+from vntts.services.payment_service import PaymentService
 from vntts.services.playback import PlaybackService
 from vntts.services.voice_profiles import VoiceProfileStore
 from vntts.ui.compose_view import (
@@ -34,6 +36,7 @@ from vntts.ui.compose_view import (
     WaveformPreview,
 )
 from vntts.ui.contact_panel import ContactPage
+from vntts.ui.payment_page import PaymentPage
 from vntts.ui.settings_panel import (
     ActiveModelCard,
     ModelSettingsPage,
@@ -42,6 +45,7 @@ from vntts.ui.settings_panel import (
 )
 from vntts.ui.voice_clone_view import VoiceClonePage
 from vntts.utils.exceptions import PlaybackError
+from vntts.utils.machine_info import get_mac_address
 
 
 class MainWindow(QMainWindow):
@@ -53,6 +57,8 @@ class MainWindow(QMainWindow):
         settings: Settings,
         playback: PlaybackService | None = None,
         voice_profile_store: VoiceProfileStore | None = None,
+        payment_service: PaymentService | None = None,
+        license_service: LicenseService | None = None,
     ) -> None:
         super().__init__()
         self._view_model = view_model
@@ -62,6 +68,11 @@ class MainWindow(QMainWindow):
         self._voice_profile_store = voice_profile_store or VoiceProfileStore(
             settings.paths.data_dir
         )
+        self._payment_service = payment_service or PaymentService(
+            settings.payment.api_endpoint,
+            settings.payment.request_timeout_seconds,
+        )
+        self._license_service = license_service or LicenseService()
         self._engine_voices: list[VoiceInfo] = []
         self._cloned_voice_artifacts: dict[str, str] = {}
         self._clone_enrollment_pending = False
@@ -241,6 +252,20 @@ class MainWindow(QMainWindow):
         self._model_settings_scroll_area.setWidgetResizable(True)
         self._model_settings_scroll_area.setFrameShape(QFrame.Shape.NoFrame)
         self._model_settings_scroll_area.setWidget(self.model_settings_page)
+        self.payment_page = PaymentPage(
+            self._payment_service,
+            self._license_service,
+            mac_address=get_mac_address(),
+            parent=self,
+        )
+        self._payment_scroll_area = QScrollArea(self)
+        self._payment_scroll_area.setObjectName("paymentScrollArea")
+        self._payment_scroll_area.setWidgetResizable(True)
+        self._payment_scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        self._payment_scroll_area.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self._payment_scroll_area.setWidget(self.payment_page)
         self.contact_page = ContactPage(self)
         self._contact_scroll_area = QScrollArea(self)
         self._contact_scroll_area.setObjectName("contactScrollArea")
@@ -252,6 +277,7 @@ class MainWindow(QMainWindow):
         self.page_stack.addWidget(self._scroll_area)
         self.page_stack.addWidget(self._clone_scroll_area)
         self.page_stack.addWidget(self._model_settings_scroll_area)
+        self.page_stack.addWidget(self._payment_scroll_area)
         self.page_stack.addWidget(self._contact_scroll_area)
 
         self._sidebar = QFrame(self)
@@ -267,12 +293,15 @@ class MainWindow(QMainWindow):
         self.nav_clone_button.setObjectName("navCloneButton")
         self.nav_settings_button = QPushButton("Cài đặt", self._sidebar)
         self.nav_settings_button.setObjectName("navSettingsButton")
+        self.nav_payment_button = QPushButton("Thanh toán", self._sidebar)
+        self.nav_payment_button.setObjectName("navPaymentButton")
         self.nav_contact_button = QPushButton("Liên hệ", self._sidebar)
         self.nav_contact_button.setObjectName("navContactButton")
         for button in (
             self.nav_compose_button,
             self.nav_clone_button,
             self.nav_settings_button,
+            self.nav_payment_button,
             self.nav_contact_button,
         ):
             button.setCheckable(True)
@@ -291,6 +320,7 @@ class MainWindow(QMainWindow):
         sidebar_layout.addWidget(self.nav_compose_button)
         sidebar_layout.addWidget(self.nav_clone_button)
         sidebar_layout.addWidget(self.nav_settings_button)
+        sidebar_layout.addWidget(self.nav_payment_button)
         sidebar_layout.addWidget(self.nav_contact_button)
         sidebar_layout.addStretch()
 
@@ -434,7 +464,8 @@ class MainWindow(QMainWindow):
         self.nav_compose_button.clicked.connect(lambda: self._show_page(0))
         self.nav_clone_button.clicked.connect(lambda: self._show_page(1))
         self.nav_settings_button.clicked.connect(lambda: self._show_page(2))
-        self.nav_contact_button.clicked.connect(lambda: self._show_page(3))
+        self.nav_payment_button.clicked.connect(lambda: self._show_page(3))
+        self.nav_contact_button.clicked.connect(lambda: self._show_page(4))
         self.voice_clone_page.profiles_changed.connect(self._profiles_changed)
         self.voice_clone_page.enrollment_requested.connect(self._enroll_voice)
         self.voice_clone_page.preview_requested.connect(self._preview_cloned_voice)
@@ -555,7 +586,8 @@ class MainWindow(QMainWindow):
         self.nav_compose_button.setChecked(index == 0)
         self.nav_clone_button.setChecked(index == 1)
         self.nav_settings_button.setChecked(index == 2)
-        self.nav_contact_button.setChecked(index == 3)
+        self.nav_payment_button.setChecked(index == 3)
+        self.nav_contact_button.setChecked(index == 4)
 
     def _runtime_changed(self, runtime: object) -> None:
         self.active_model_card.set_runtime(runtime)

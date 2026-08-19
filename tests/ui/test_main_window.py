@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QStyle,
     QToolButton,
 )
@@ -28,6 +29,8 @@ from vntts.config.settings import Settings
 from vntts.config.theme import THEME, build_stylesheet
 from vntts.db.models import AudioEffects, HardwareInfo, SynthesisResult
 from vntts.engines.factory import EngineFactory, EngineRegistry
+from vntts.services.license_service import LicenseActivationResult
+from vntts.services.payment_service import PaymentResponse
 from vntts.services.synthesis import SynthesizeSpeech
 from vntts.services.voice_profiles import VoiceProfileStore
 from vntts.ui.compose_view import DEFAULT_DEMO_TEXT, MainViewModel
@@ -35,7 +38,13 @@ from vntts.ui.controls import ChevronComboBox
 from vntts.ui.main_window import MainWindow
 
 
-def _window(qtbot, settings: Settings) -> tuple[MainWindow, MainViewModel]:  # type: ignore[no-untyped-def]
+def _window(
+    qtbot,
+    settings: Settings,
+    *,
+    payment_service=None,  # type: ignore[no-untyped-def]
+    license_service=None,  # type: ignore[no-untyped-def]
+) -> tuple[MainWindow, MainViewModel]:  # type: ignore[no-untyped-def]
     application = QApplication.instance()
     assert application is not None
     application.setStyle("Fusion")
@@ -83,6 +92,8 @@ def _window(qtbot, settings: Settings) -> tuple[MainWindow, MainViewModel]:  # t
         view_model,
         settings,
         voice_profile_store=voice_store,
+        payment_service=payment_service,
+        license_service=license_service,
     )
     qtbot.addWidget(window)
     window.show()
@@ -547,7 +558,7 @@ def test_settings_sections_are_separate_cards(qtbot, settings: Settings) -> None
 def test_settings_page_only_exposes_device_selection(qtbot, settings: Settings) -> None:  # type: ignore[no-untyped-def]
     window, _ = _window(qtbot, settings)
 
-    assert window.page_stack.count() == 4
+    assert window.page_stack.count() == 5
     assert window.active_model_card.title_label.text() == "Thiết bị xử lý"
     assert window.active_model_card.title_label.objectName() == "activeModelTitle"
     assert window.active_model_card.title_label.font().bold()
@@ -577,6 +588,113 @@ def test_settings_page_only_exposes_device_selection(qtbot, settings: Settings) 
     ] == ["auto", "cuda", "cpu"]
 
 
+def test_payment_page_validates_and_uses_separate_services(
+    qtbot,
+    settings: Settings,
+) -> None:  # type: ignore[no-untyped-def]
+    class RecordingPaymentService:
+        def __init__(self) -> None:
+            self.requests = []
+
+        def request_payment(self, payment):  # type: ignore[no-untyped-def]
+            time.sleep(0.05)
+            self.requests.append(payment)
+            return PaymentResponse(
+                accepted=True,
+                message=(
+                    "Yêu cầu thanh toán đã được gửi.\n"
+                    "Vui lòng kiểm tra email để nhận hướng dẫn thanh toán."
+                ),
+                mocked=True,
+            )
+
+    class RecordingLicenseService:
+        def __init__(self) -> None:
+            self.keys: list[str] = []
+
+        def activate(self, key: str) -> LicenseActivationResult:
+            self.keys.append(key)
+            return LicenseActivationResult(False, "Đã ghi nhận License Key.")
+
+    payment_service = RecordingPaymentService()
+    license_service = RecordingLicenseService()
+    window, _ = _window(
+        qtbot,
+        settings,
+        payment_service=payment_service,
+        license_service=license_service,
+    )
+
+    window.nav_payment_button.click()
+
+    page = window.payment_page
+    assert window.page_stack.currentIndex() == 3
+    assert window.nav_payment_button.isChecked()
+    assert not window.nav_contact_button.isChecked()
+    assert page.payment_card.maximumWidth() == THEME.content_reading_width
+    assert (
+        abs(
+            page.payment_card.mapTo(
+                page,
+                page.payment_card.rect().center(),
+            ).x()
+            - page.rect().center().x()
+        )
+        <= THEME.space_1
+    )
+    assert page.mac_input.isReadOnly()
+    assert len(page.mac_input.text().split(":")) == 6
+
+    page.copy_mac_button.click()
+    assert QApplication.clipboard().text() == page.mac_input.text()
+
+    page.send_button.click()
+    assert page.payment_status_label.text() == "Vui lòng nhập họ và tên."
+
+    page.name_input.setText("Nguyễn Văn A")
+    page.email_input.setText("email-khong-hop-le")
+    page.send_button.click()
+    assert page.payment_status_label.text() == "Email không đúng định dạng."
+
+    page.email_input.setText("example@gmail.com")
+    page.send_button.click()
+    assert page.payment_status_label.text() == "Vui lòng chọn gói thanh toán."
+
+    page.plan_combo.setCurrentIndex(page.plan_combo.findData("monthly"))
+    page.send_button.click()
+    assert not page.send_button.isEnabled()
+    assert page.send_button.text() == "Đang gửi..."
+    qtbot.waitUntil(
+        lambda: page.payment_status_label.text().startswith(
+            "Yêu cầu thanh toán đã được gửi."
+        ),
+        timeout=2_000,
+    )
+    qtbot.waitUntil(page.send_button.isEnabled, timeout=2_000)
+    assert len(payment_service.requests) == 1
+    assert payment_service.requests[0].to_payload() == {
+        "name": "Nguyễn Văn A",
+        "email": "example@gmail.com",
+        "plan": "monthly",
+        "mac_address": page.mac_input.text(),
+    }
+
+    page.activate_button.click()
+    assert page.license_status_label.text() == "Vui lòng nhập License Key."
+    assert license_service.keys == []
+
+    page.license_key_input.setText("TEST-LICENSE-KEY")
+    page.activate_button.click()
+    assert license_service.keys == ["TEST-LICENSE-KEY"]
+    assert page.license_status_label.text() == "Đã ghi nhận License Key."
+
+    window.nav_contact_button.click()
+    assert window.page_stack.currentIndex() == 4
+    window.nav_payment_button.click()
+    assert window.page_stack.currentIndex() == 3
+    assert window.nav_payment_button.isChecked()
+
+
 def test_contact_page_displays_company_details(
     qtbot, settings: Settings
 ) -> None:  # type: ignore[no-untyped-def]
@@ -584,11 +702,12 @@ def test_contact_page_displays_company_details(
 
     window.nav_contact_button.click()
 
-    assert window.page_stack.currentIndex() == 3
+    assert window.page_stack.currentIndex() == 4
     assert window.nav_contact_button.isChecked()
     assert not window.nav_compose_button.isChecked()
     assert not window.nav_clone_button.isChecked()
     assert not window.nav_settings_button.isChecked()
+    assert not window.nav_payment_button.isChecked()
     assert window.contact_page.card.maximumWidth() == THEME.content_reading_width
     assert (
         abs(
@@ -610,8 +729,13 @@ def test_contact_page_displays_company_details(
     assert window.contact_page.website_label.text() == "Chưa cập nhật"
     assert window.contact_page.support_email_label.text() == "Chưa cập nhật"
     assert not window.contact_page.license_link_label.isVisible()
-    assert window.contact_page.license_link_label.openExternalLinks()
-    assert "qtdoc-lgpl.html" in window.contact_page.license_link_label.text()
+    assert not window.contact_page.license_link_label.openExternalLinks()
+    assert window.contact_page.license_link_label.text() == (
+        "Phần mềm này sử dụng Qt/PySide6 và các thành phần "
+        "mã nguồn mở khác. "
+        "Thông tin giấy phép được cung cấp trong thư mục "
+        "_internal/licenses"
+    )
     card_layout = window.contact_page.card.layout()
     toggle_item = card_layout.itemAt(
         card_layout.indexOf(window.contact_page.license_toggle_button)
@@ -620,7 +744,11 @@ def test_contact_page_displays_company_details(
         card_layout.indexOf(window.contact_page.license_link_label)
     )
     assert toggle_item.alignment() == Qt.AlignmentFlag.AlignRight
-    assert link_item.alignment() == Qt.AlignmentFlag.AlignRight
+    assert link_item.alignment() == Qt.AlignmentFlag(0)
+    assert (
+        window.contact_page.license_link_label.sizePolicy().horizontalPolicy()
+        == QSizePolicy.Policy.Expanding
+    )
 
     window.contact_page.license_toggle_button.click()
 

@@ -21,6 +21,11 @@ tts:
   default_engine: "vieneu-v3"
   production_default_engine: "vieneu-v3"
 
+# Để trống endpoint khi backend chưa sẵn sàng; PaymentService sẽ dùng mock.
+payment:
+  api_endpoint: "" # Ví dụ: https://example.com/api/payment/request
+  request_timeout_seconds: 10
+
 audio:
   default_speed: 1.0
   default_pitch_semitones: 0.0

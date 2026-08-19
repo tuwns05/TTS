@@ -34,6 +34,24 @@ def test_environment_path_override_is_respected(
     assert custom_cache.is_dir()
 
 
+def test_payment_endpoint_can_be_configured_from_environment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("VNTTS_APP_DATA_DIR", str(tmp_path / "app-data"))
+    monkeypatch.setenv(
+        "VNTTS_PAYMENT_API_ENDPOINT",
+        "https://example.com/api/payment/request",
+    )
+
+    result = load_settings(create_directories=False)
+
+    assert result.payment.api_endpoint == (
+        "https://example.com/api/payment/request"
+    )
+    assert result.payment.request_timeout_seconds == 10
+
+
 def test_production_defaults_to_bundled_vieneu_v3(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
