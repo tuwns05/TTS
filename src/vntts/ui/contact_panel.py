@@ -120,14 +120,18 @@ class ContactPage(QWidget):
         )
         self.license_toggle_button.setStyleSheet(
             f"color: {THEME.accent}; "
-            f"font-size: {THEME.font_size_caption}px; font-weight: 600; "
-            "text-align: left; background: transparent; border: none; "
+            f"font-size: {THEME.font_size_caption - 1}px; font-weight: 600; "
+            "text-align: right; background: transparent; border: none; "
             "padding: 0;"
         )
         self.license_link_label = QLabel(self.card)
         self.license_link_label.setObjectName("contactLicenseLink")
         self.license_link_label.setTextFormat(Qt.TextFormat.RichText)
         self.license_link_label.setOpenExternalLinks(True)
+        self.license_link_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+        self.license_link_label.setStyleSheet(
+            f"font-size: {THEME.font_size_caption - 1}px;"
+        )
         self.license_link_label.setText(
             '<a href="https://doc.qt.io/qtforpython-6/overviews/qtdoc-lgpl.html" '
             f'style="color: {THEME.accent}; text-decoration: none;">'
@@ -151,8 +155,16 @@ class ContactPage(QWidget):
         card_layout.addWidget(section_title)
         card_layout.addLayout(details)
         card_layout.addWidget(self._divider())
-        card_layout.addWidget(self.license_toggle_button)
-        card_layout.addWidget(self.license_link_label)
+        card_layout.addWidget(
+            self.license_toggle_button,
+            0,
+            Qt.AlignmentFlag.AlignRight,
+        )
+        card_layout.addWidget(
+            self.license_link_label,
+            0,
+            Qt.AlignmentFlag.AlignRight,
+        )
 
         content_row = QHBoxLayout()
         content_row.setContentsMargins(0, 0, 0, 0)

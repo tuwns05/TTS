@@ -1,24 +1,261 @@
-GPHI-TTS third-party notices
-============================
+GPHI-TTS THIRD-PARTY OPEN-SOURCE NOTICES
+========================================
 
-VieNeu SDK 3.2.4
+This product includes open-source software and model assets developed by third
+parties. Copyright remains with the respective copyright holders.
+
+The notices below cover the principal components intentionally used by the
+production build. Exact license/copyright files shipped by installed Python
+wheels must also be included under licenses/components/. Run:
+
+    python scripts/export_production_licenses.py
+
+before building the release. The PyInstaller spec already copies the complete
+packaging/licenses directory into the application distribution.
+
+1. VieNeu SDK 3.2.4
+-------------------
+Project: VieNeu-TTS
 Source: https://github.com/pnnbao97/VieNeu-TTS
+Author: Phạm Nguyễn Ngọc Bảo and contributors
 License: Apache License 2.0
+License text: standard/Apache-2.0.txt
 
-VieNeu-TTS v3 Turbo model
+2. VieNeu-TTS v3 Turbo model
+----------------------------
+Model: pnnbao-ump/VieNeu-TTS-v3-Turbo
 Source: https://huggingface.co/pnnbao-ump/VieNeu-TTS-v3-Turbo
-Revision: 75ff82a72f54d55ed389e1eeb12041d3c4bac7d4
+Revision used by this project: 75ff82a72f54d55ed389e1eeb12041d3c4bac7d4
 Author: Phạm Nguyễn Ngọc Bảo
 License: Apache License 2.0
+License text: standard/Apache-2.0.txt
 
-MOSS Audio Tokenizer Nano
+The upstream model card asks redistributors/converters to retain license notice
+and attribution for both the original VieNeu-TTS project and this model package.
+
+3. MOSS Audio Tokenizer Nano
+----------------------------
+Model: OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano
 Source: https://huggingface.co/OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano
-Revision: 6aa02b01e445cc585582cf0ba480bc3ea6c8dd68
+Revision used by this project: 6aa02b01e445cc585582cf0ba480bc3ea6c8dd68
+Copyright: OpenMOSS-Team and contributors
+License: Apache License 2.0
+License text: standard/Apache-2.0.txt
 
-MOSS Audio Tokenizer Nano ONNX
+4. MOSS Audio Tokenizer Nano ONNX
+---------------------------------
+Model: OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano-ONNX
 Source: https://huggingface.co/OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano-ONNX
-Revision: ceff0d0749bfb3fa2d61149794ec6feef0d1e1ae
+Revision used by this project: ceff0d0749bfb3fa2d61149794ec6feef0d1e1ae
+Copyright: OpenMOSS-Team and contributors
+License: Apache License 2.0
+License text: standard/Apache-2.0.txt
 
-This file records the model/runtime attribution used by this build. The release
-owner must complete a license inventory for all Python wheels before public
-distribution and must add the application's own license terms.
+5. SEA-G2P
+----------
+Package: sea-g2p
+Version in current production lock: 0.8.4
+Source: https://github.com/pnnbao97/sea-g2p
+Author: Phạm Nguyễn Ngọc Bảo and contributors
+License: Apache License 2.0
+License text: standard/Apache-2.0.txt
+
+6. Qt for Python / PySide6 / Qt 6
+---------------------------------
+Package: PySide6
+Version: 6.11.1
+Source: https://code.qt.io/cgit/pyside/pyside-setup.git/
+Qt project: https://www.qt.io/
+License option used for this open-source distribution: GNU LGPL v3, only for
+Qt modules/components that are available under LGPL. Some Qt modules are GPL-only
+for open-source users and must not be added to a proprietary build unless their
+GPL requirements are accepted or a commercial Qt license is obtained.
+License text: standard/LGPL-3.0.txt
+GPL text incorporated by LGPLv3: standard/GPL-3.0.txt
+
+Keep Qt shared libraries separate/replaceable in the distributed application.
+Do not remove the user's LGPL rights to modify/relink Qt or reverse engineer for
+that purpose. Provide corresponding source for the LGPL-covered Qt/PySide6 build
+or a compliant written source offer.
+
+7. ONNX Runtime
+---------------
+Package: onnxruntime
+Version in current production lock: 1.28.0
+Source: https://github.com/microsoft/onnxruntime
+Copyright: Microsoft Corporation and contributors
+License: MIT
+Exact license file: components/onnxruntime-*/
+
+8. PyTorch
+----------
+Package: torch
+Version: 2.8.0+cu128
+Source: https://github.com/pytorch/pytorch
+Copyright: PyTorch contributors
+License: BSD-style / BSD-3-Clause
+Exact LICENSE and NOTICE files: components/torch-*/
+
+PyTorch binary distributions may contain third-party components. Preserve the
+license/NOTICE files shipped with the exact wheel used for the release.
+
+9. TorchAudio
+-------------
+Package: torchaudio
+Version: 2.8.0+cu128
+Source: https://github.com/pytorch/audio
+Copyright: 2017 Facebook Inc. (Soumith Chintala) and contributors
+License: BSD-2-Clause
+Exact license file: components/torchaudio-*/
+
+10. Hugging Face Transformers
+-----------------------------
+Package: transformers
+Version: 4.57.6
+Source: https://github.com/huggingface/transformers
+Copyright: Hugging Face team and contributors
+License: Apache License 2.0
+License text: standard/Apache-2.0.txt
+Exact package license files: components/transformers-*/
+
+11. Hugging Face Hub
+--------------------
+Package: huggingface-hub
+Version in current production lock: 0.36.2
+Source: https://github.com/huggingface/huggingface_hub
+Copyright: Hugging Face team and contributors
+License: Apache License 2.0
+License text: standard/Apache-2.0.txt
+
+12. Hugging Face Tokenizers
+---------------------------
+Package: tokenizers
+Version in current production lock: 0.22.2
+Source: https://github.com/huggingface/tokenizers
+Copyright: Hugging Face team and contributors
+License: Apache License 2.0
+License text: standard/Apache-2.0.txt
+
+13. NumPy
+---------
+Package: numpy
+Version: 2.4.6
+Source: https://github.com/numpy/numpy
+License: BSD-3-Clause; binary wheels may bundle additional libraries under
+compatible or exception-based licenses.
+Exact wheel license bundle: components/numpy-*/
+
+14. SciPy
+---------
+Package: scipy
+Version: 1.17.1
+Source: https://github.com/scipy/scipy
+License: BSD-3-Clause; binary wheels may bundle OpenBLAS/LAPACK and runtime
+libraries with additional license notices.
+Exact wheel license bundle: components/scipy-*/
+
+15. psutil
+----------
+Package: psutil
+Version: 7.2.2
+Source: https://github.com/giampaolo/psutil
+Copyright: 2009 Jay Loden, Dave Daeschler, Giampaolo Rodola and contributors
+License: BSD-3-Clause
+Exact license file: components/psutil-*/
+
+16. py-cpuinfo
+--------------
+Package: py-cpuinfo
+Version: 9.0.0
+Source: https://github.com/workhorsy/py-cpuinfo
+Copyright: 2014-2022 Matthew Brennan Jones
+License: MIT
+Exact license file: components/py-cpuinfo-*/
+
+17. Loguru
+----------
+Package: loguru
+Version: 0.7.3
+Source: https://github.com/Delgan/loguru
+License: MIT
+Exact license file: components/loguru-*/
+
+18. PyYAML
+----------
+Package: PyYAML
+Version: 6.0.3
+Source: https://github.com/yaml/pyyaml
+Copyright: 2017-2021 Ingy döt Net; 2006-2016 Kirill Simonov; contributors
+License: MIT
+Exact license file: components/PyYAML-*/
+
+19. python-docx
+---------------
+Package: python-docx
+Version: 1.2.0
+Source: https://github.com/python-openxml/python-docx
+Copyright: 2013 Steve Canny and contributors
+License: MIT
+Exact license file: components/python-docx-*/
+
+20. pypdf
+---------
+Package: pypdf
+Version: 6.15.0
+Source: https://github.com/py-pdf/pypdf
+License: BSD-3-Clause
+Exact license file: components/pypdf-*/
+
+21. lameenc / LAME
+------------------
+Package: lameenc
+Version: 1.8.4
+Source: https://github.com/chrisstaite/lameenc
+Author: Chris Staite and contributors
+License expression: LGPL-3.0-or-later
+License text: standard/LGPL-3.0.txt
+GPL text incorporated by LGPLv3: standard/GPL-3.0.txt
+Exact wheel license files: components/lameenc-*/
+
+Keep the lameenc extension/library replaceable and provide the corresponding
+source (including modifications, if any) or a compliant written source offer.
+
+22. python-soxr / libsoxr
+-------------------------
+Package: soxr
+Version in current production lock: 1.1.0
+Source: https://github.com/dofuuz/python-soxr
+License: LGPL-2.1-or-later; package also documents PFFFT under a BSD-like license.
+License text: standard/LGPL-2.1.txt
+Exact wheel license files: components/soxr-*/
+
+23. SoundFile / libsndfile
+--------------------------
+Package: soundfile
+Version in current production lock: 0.14.0
+Source: https://github.com/bastibe/python-soundfile
+Python wrapper license: BSD-3-Clause
+Binary wheels may bundle libsndfile, which is LGPL-licensed. Preserve all wheel
+licensing files and provide corresponding source/offer for bundled LGPL code.
+Exact wheel license files: components/soundfile-*/
+
+24. PyInstaller bootloader
+--------------------------
+Package: PyInstaller
+Version: 6.21.0
+Source: https://github.com/pyinstaller/pyinstaller
+License: GPL-2.0-or-later WITH PyInstaller Bootloader Exception for the relevant
+bootloader distribution. PyInstaller's exception permits distributing generated
+executables without placing the application itself under the GPL merely because
+of the bootloader.
+Exact COPYING/license files: components/PyInstaller-*/
+
+Additional Python/runtime dependencies
+--------------------------------------
+The production lock contains transitive packages beyond this principal list.
+The exact license/copyright files from all installed release wheels should be
+exported by scripts/export_production_licenses.py and distributed under
+licenses/components/. Over-including notices is preferable to silently dropping
+a license from a binary dependency.
+
+No third-party trademark rights are granted by these notices.

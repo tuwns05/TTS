@@ -612,6 +612,15 @@ def test_contact_page_displays_company_details(
     assert not window.contact_page.license_link_label.isVisible()
     assert window.contact_page.license_link_label.openExternalLinks()
     assert "qtdoc-lgpl.html" in window.contact_page.license_link_label.text()
+    card_layout = window.contact_page.card.layout()
+    toggle_item = card_layout.itemAt(
+        card_layout.indexOf(window.contact_page.license_toggle_button)
+    )
+    link_item = card_layout.itemAt(
+        card_layout.indexOf(window.contact_page.license_link_label)
+    )
+    assert toggle_item.alignment() == Qt.AlignmentFlag.AlignRight
+    assert link_item.alignment() == Qt.AlignmentFlag.AlignRight
 
     window.contact_page.license_toggle_button.click()
 

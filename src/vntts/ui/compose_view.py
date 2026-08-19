@@ -45,7 +45,7 @@ from vntts.utils.worker import TaskWorker
 
 
 DEFAULT_DEMO_TEXT = (
-    "Chào mừng bạn đến với GPHI-TTS, ứng dụng chuyển văn bản tiếng Việt "
+    "Chào mừng bạn đến với GPHI TTS, ứng dụng chuyển văn bản tiếng Việt "
     "thành giọng nói ngay trên máy tính. "
     "Ứng dụng hoạt động offline nên nội dung của bạn luôn được xử lý cục bộ. "
     "Bạn có thể chọn giọng đọc và điều chỉnh tốc độ, cao độ, âm lượng theo nhu cầu. "

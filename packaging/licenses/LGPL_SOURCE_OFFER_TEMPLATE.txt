@@ -1,0 +1,31 @@
+LGPL CORRESPONDING SOURCE OFFER — REPLACE PLACEHOLDERS BEFORE RELEASE
+====================================================================
+
+This product includes libraries distributed under the GNU Lesser General Public
+License, including Qt for Python / PySide6 / Qt 6 and other LGPL-covered audio
+libraries identified in THIRD_PARTY_NOTICES.txt.
+
+[LEGAL ENTITY NAME] will provide, upon request, the complete corresponding
+source code for the exact LGPL-covered library versions distributed with this
+release, including any modifications made by [LEGAL ENTITY NAME], together with
+installation information required by the applicable license.
+
+This offer is valid for at least three (3) years from the date this product is
+distributed, and for as long as product support is offered where the applicable
+license requires a longer period.
+
+Request source from:
+    Legal entity: [LEGAL ENTITY NAME]
+    Email:        [OPEN_SOURCE_COMPLIANCE_EMAIL]
+    Website:      [SOURCE_REQUEST_URL, optional]
+    Product:      GPHI-TTS
+    Release:      [PRODUCT_VERSION]
+
+A reasonable charge covering the physical cost of providing the source may be
+applied where permitted by the applicable license.
+
+IMPORTANT FOR RELEASE OWNER
+---------------------------
+Do not distribute this template with placeholders. Either:
+1) replace every placeholder and honor the offer; or
+2) distribute the complete corresponding source alongside the product instead.
