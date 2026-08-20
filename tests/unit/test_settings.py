@@ -59,6 +59,20 @@ def test_payment_endpoint_can_be_configured_from_environment(
     }
 
 
+def test_default_payment_endpoint_targets_local_test_server(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("VNTTS_APP_DATA_DIR", str(tmp_path / "app-data"))
+    monkeypatch.delenv("VNTTS_PAYMENT_API_ENDPOINT", raising=False)
+
+    result = load_settings(create_directories=False)
+
+    assert result.payment.api_endpoint == (
+        "http://127.0.0.1:8000/payment/request"
+    )
+
+
 def test_production_defaults_to_bundled_vieneu_v3(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

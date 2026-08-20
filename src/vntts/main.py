@@ -89,7 +89,7 @@ def build_application(argv: Sequence[str] | None = None) -> tuple[QApplication, 
             settings.payment.api_endpoint,
             settings.payment.request_timeout_seconds,
         ),
-        license_service=LicenseService(),
+        license_service=LicenseService(settings.paths.data_dir),
     )
 
     logger.info(

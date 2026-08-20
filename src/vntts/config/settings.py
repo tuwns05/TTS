@@ -37,7 +37,7 @@ _SAFE_DEFAULTS: dict[str, object] = {
         "production_default_engine": "vieneu-v3",
     },
     "payment": {
-        "api_endpoint": "",
+        "api_endpoint": "http://127.0.0.1:8000/payment/request",
         "request_timeout_seconds": 10,
         "plan_prices_vnd": {
             "monthly": 99_000,

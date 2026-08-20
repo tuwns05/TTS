@@ -30,13 +30,41 @@ from vntts.config.settings import Settings
 from vntts.config.theme import THEME, build_stylesheet
 from vntts.db.models import AudioEffects, HardwareInfo, SynthesisResult
 from vntts.engines.factory import EngineFactory, EngineRegistry
-from vntts.services.license_service import LicenseActivationResult
+from vntts.services.license_service import (
+    LICENSE_REQUIRED_MESSAGE,
+    LicenseActivationResult,
+    LicenseStatus,
+)
 from vntts.services.payment_service import PaymentResponse
 from vntts.services.synthesis import SynthesizeSpeech
 from vntts.services.voice_profiles import VoiceProfileStore
 from vntts.ui.compose_view import DEFAULT_DEMO_TEXT, MainViewModel
 from vntts.ui.controls import ChevronComboBox
 from vntts.ui.main_window import MainWindow
+
+
+class LicensedTestService:
+    """Keep unrelated UI tests focused on their original licensed workflow."""
+
+    def __init__(self) -> None:
+        self.result = LicenseActivationResult(
+            activated=True,
+            message="Xác thực mã kích hoạt thành công.",
+            customer_name="Test Customer",
+            plan="yearly",
+            paid_at="2026-08-19T14:48:00+07:00",
+            expires_at="2027-08-19T14:48:00+07:00",
+            mac="F0:68:E3:C4:D1:A1",
+        )
+
+    def saved_key(self) -> str | None:
+        return "TEST-LICENSE-KEY"
+
+    def validate_saved(self) -> LicenseActivationResult:
+        return self.result
+
+    def activate(self, _key: str) -> LicenseActivationResult:
+        return self.result
 
 
 def _window(
@@ -94,7 +122,7 @@ def _window(
         settings,
         voice_profile_store=voice_store,
         payment_service=payment_service,
-        license_service=license_service,
+        license_service=license_service or LicensedTestService(),
     )
     qtbot.addWidget(window)
     window.show()
@@ -115,6 +143,71 @@ def test_window_opens(qtbot, settings: Settings) -> None:  # type: ignore[no-unt
     assert window.synthesize_button.text() == "Tạo giọng nói"
     assert window.synthesize_button.isEnabled()
     assert not window.waveform.has_audio
+
+
+def test_unlicensed_startup_locks_feature_pages_and_redirects_to_payment(
+    qtbot,
+    settings: Settings,
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    class UnlicensedService:
+        def saved_key(self) -> str | None:
+            return None
+
+        def validate_saved(self) -> LicenseActivationResult:
+            return LicenseActivationResult(
+                activated=False,
+                message=LICENSE_REQUIRED_MESSAGE,
+                status=LicenseStatus.NOT_ACTIVATED,
+            )
+
+    window, _ = _window(
+        qtbot,
+        settings,
+        license_service=UnlicensedService(),  # type: ignore[arg-type]
+    )
+    notifications: list[str] = []
+    monkeypatch.setattr(window, "_show_license_notification", notifications.append)
+
+    assert window.page_stack.currentIndex() == 3
+    assert window.nav_compose_button.license_locked
+    assert window.nav_clone_button.license_locked
+    assert window.nav_compose_button.property("licenseLocked") is True
+    assert window.nav_clone_button.property("licenseLocked") is True
+    assert not window.synthesize_button.isEnabled()
+
+    window.nav_clone_button.click()
+
+    assert window.page_stack.currentIndex() == 3
+    assert notifications == [LICENSE_REQUIRED_MESSAGE]
+
+
+def test_license_expiring_while_open_blocks_next_synthesis(
+    qtbot,
+    settings: Settings,
+) -> None:  # type: ignore[no-untyped-def]
+    license_service = LicensedTestService()
+    window, view_model = _window(
+        qtbot,
+        settings,
+        license_service=license_service,
+    )
+    assert window.synthesize_button.isEnabled()
+    license_service.result = LicenseActivationResult(
+        activated=False,
+        message="Mã kích hoạt đã hết hạn.",
+        status=LicenseStatus.EXPIRED,
+    )
+
+    window.synthesize_button.click()
+
+    assert view_model.state == "idle"
+    assert window.page_stack.currentIndex() == 3
+    assert window.nav_compose_button.license_locked
+    assert window.nav_clone_button.license_locked
+    assert window.payment_page.license_status_label.text() == (
+        "Mã kích hoạt đã hết hạn."
+    )
 
 
 def test_hardware_detection_runs_after_window_is_visible_and_queues_load(
@@ -613,6 +706,16 @@ def test_payment_page_validates_and_uses_separate_services(
         def __init__(self) -> None:
             self.keys: list[str] = []
 
+        def saved_key(self) -> str | None:
+            return None
+
+        def validate_saved(self) -> LicenseActivationResult:
+            return LicenseActivationResult(
+                activated=False,
+                message=LICENSE_REQUIRED_MESSAGE,
+                status=LicenseStatus.NOT_ACTIVATED,
+            )
+
         def activate(self, key: str) -> LicenseActivationResult:
             self.keys.append(key)
             return LicenseActivationResult(
@@ -709,9 +812,10 @@ def test_payment_page_validates_and_uses_separate_services(
         "name": "Nguyễn Văn A",
         "email": "example@gmail.com",
         "plan": "monthly",
-        "mac_address": payment_service.requests[0].mac_address,
+        "price": 1_990_000,
+        "mac": payment_service.requests[0].mac,
     }
-    assert len(payment_service.requests[0].mac_address.split(":")) == 6
+    assert len(payment_service.requests[0].mac.split(":")) == 6
 
     page.activate_button.click()
     assert page.license_status_label.text() == "Vui lòng nhập mã kích hoạt."
@@ -728,6 +832,8 @@ def test_payment_page_validates_and_uses_separate_services(
     assert page.license_customer_value.text() == "Test Customer"
     assert page.license_paid_at_value.text() == "19/08/2026"
     assert page.license_expires_at_value.text() == "19/08/2027"
+    assert not window.nav_compose_button.license_locked
+    assert not window.nav_clone_button.license_locked
 
     page.license_key_input.clear()
     page.activate_button.click()

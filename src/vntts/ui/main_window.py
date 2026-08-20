@@ -1,8 +1,9 @@
 """Desktop workspace for the Vietnamese text-to-speech workflow."""
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QCloseEvent, QResizeEvent
+from PySide6.QtCore import QRectF, Qt, QTimer
+from PySide6.QtGui import QCloseEvent, QColor, QPainter, QPaintEvent, QPen, QResizeEvent
 from PySide6.QtWidgets import (
+    QApplication,
     QBoxLayout,
     QFileDialog,
     QFrame,
@@ -12,6 +13,8 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QStackedWidget,
+    QStyle,
+    QSystemTrayIcon,
     QVBoxLayout,
     QWidget,
 )
@@ -25,7 +28,10 @@ from vntts.db.models import (
     VoiceInfo,
 )
 from vntts.services.document_import import ImportedDocument
-from vntts.services.license_service import LicenseService
+from vntts.services.license_service import (
+    LicenseActivationResult,
+    LicenseService,
+)
 from vntts.services.payment_service import PaymentService
 from vntts.services.playback import PlaybackService
 from vntts.services.voice_profiles import VoiceProfileStore
@@ -46,6 +52,42 @@ from vntts.ui.settings_panel import (
 from vntts.ui.voice_clone_view import VoiceClonePage
 from vntts.utils.exceptions import PlaybackError
 from vntts.utils.machine_info import get_mac_address
+
+
+class LicenseNavButton(QPushButton):
+    """Sidebar button that paints a compact lock at its right edge."""
+
+    def __init__(self, text: str, parent: QWidget | None = None) -> None:
+        super().__init__(text, parent)
+        self._license_locked = False
+
+    @property
+    def license_locked(self) -> bool:
+        return self._license_locked
+
+    def set_license_locked(self, locked: bool) -> None:
+        self._license_locked = locked
+        self.setProperty("licenseLocked", locked)
+        self.setToolTip(
+            "Cần mã kích hoạt hợp lệ để sử dụng."
+            if locked
+            else ""
+        )
+        self.setAccessibleDescription(self.toolTip())
+        self.update()
+
+    def paintEvent(self, event: QPaintEvent) -> None:
+        super().paintEvent(event)
+        if not self._license_locked:
+            return
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(QPen(QColor(THEME.text_secondary), 1.6))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        x = self.width() - THEME.space_3 - 14
+        y = (self.height() - 15) / 2
+        painter.drawArc(QRectF(x + 3, y, 8, 9), 0, 180 * 16)
+        painter.drawRoundedRect(QRectF(x + 1, y + 6, 12, 9), 2, 2)
 
 
 class MainWindow(QMainWindow):
@@ -72,7 +114,12 @@ class MainWindow(QMainWindow):
             settings.payment.api_endpoint,
             settings.payment.request_timeout_seconds,
         )
-        self._license_service = license_service or LicenseService()
+        self._license_service = license_service or LicenseService(
+            settings.paths.data_dir
+        )
+        self._license_valid = False
+        self._license_tray_icon: QSystemTrayIcon | None = None
+        self._startup_license_message: str | None = None
         self._engine_voices: list[VoiceInfo] = []
         self._cloned_voice_artifacts: dict[str, str] = {}
         self._clone_enrollment_pending = False
@@ -288,9 +335,9 @@ class MainWindow(QMainWindow):
         self.sidebar_brand.setObjectName("sidebarBrand")
         self.sidebar_brand.setProperty("role", "section")
         self.sidebar_brand.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.nav_compose_button = QPushButton("Tạo giọng nói", self._sidebar)
+        self.nav_compose_button = LicenseNavButton("Tạo giọng nói", self._sidebar)
         self.nav_compose_button.setObjectName("navComposeButton")
-        self.nav_clone_button = QPushButton("Nhân bản giọng", self._sidebar)
+        self.nav_clone_button = LicenseNavButton("Nhân bản giọng", self._sidebar)
         self.nav_clone_button.setObjectName("navCloneButton")
         self.nav_settings_button = QPushButton("Cài đặt", self._sidebar)
         self.nav_settings_button.setObjectName("navSettingsButton")
@@ -335,6 +382,12 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(shell)
 
         self._connect_signals()
+        startup_license = self._license_service.validate_saved()
+        self.payment_page.apply_saved_license(startup_license)
+        self._apply_license_state(startup_license)
+        if not startup_license.activated:
+            self._startup_license_message = startup_license.message
+            self._show_page(3, enforce_license=False)
         self._apply_responsive_layout(self.width() - THEME.sidebar_width)
         self.model_settings_page.set_models(
             view_model.engine_infos,
@@ -358,6 +411,13 @@ class MainWindow(QMainWindow):
         """Start slow startup work after the window has been shown."""
 
         self._view_model.initialize()
+        if self._startup_license_message:
+            QTimer.singleShot(
+                0,
+                lambda: self._show_license_notification(
+                    self._startup_license_message or ""
+                ),
+            )
 
     @property
     def responsive_mode(self) -> str:
@@ -462,11 +522,16 @@ class MainWindow(QMainWindow):
         self.status_label.setMaximumWidth(16_777_215)
 
     def _connect_signals(self) -> None:
-        self.nav_compose_button.clicked.connect(lambda: self._show_page(0))
-        self.nav_clone_button.clicked.connect(lambda: self._show_page(1))
+        self.nav_compose_button.clicked.connect(
+            lambda: self._open_licensed_page(0)
+        )
+        self.nav_clone_button.clicked.connect(
+            lambda: self._open_licensed_page(1)
+        )
         self.nav_settings_button.clicked.connect(lambda: self._show_page(2))
         self.nav_payment_button.clicked.connect(lambda: self._show_page(3))
         self.nav_contact_button.clicked.connect(lambda: self._show_page(4))
+        self.payment_page.license_activated.connect(self._license_activated)
         self.voice_clone_page.profiles_changed.connect(self._profiles_changed)
         self.voice_clone_page.enrollment_requested.connect(self._enroll_voice)
         self.voice_clone_page.preview_requested.connect(self._preview_cloned_voice)
@@ -498,6 +563,8 @@ class MainWindow(QMainWindow):
         self._clone_playback.error_occurred.connect(self._show_clone_playback_error)
 
     def _request_synthesis(self) -> None:
+        if not self._check_license():
+            return
         self._playback.clear()
         self.waveform.clear()
         voice_id = self.voice_selector.current_voice_id()
@@ -513,6 +580,8 @@ class MainWindow(QMainWindow):
         )
 
     def _enroll_voice(self, name: str, source_audio_path: str) -> None:
+        if not self._check_license():
+            return
         self._clone_enrollment_pending = True
         self._view_model.enroll_voice(name, source_audio_path)
 
@@ -521,6 +590,8 @@ class MainWindow(QMainWindow):
         self.voice_clone_page.profile_created(profile)
 
     def _preview_cloned_voice(self, profile: object) -> None:
+        if not self._check_license():
+            return
         artifact_path = str(getattr(profile, "voice_artifact_path", ""))
         profile_id = str(getattr(profile, "profile_id", ""))
         if not artifact_path or not profile_id:
@@ -574,7 +645,13 @@ class MainWindow(QMainWindow):
         self.voice_style.set_supported_styles(style_ids)
         self._refresh_voice_choices()
 
-    def _show_page(self, index: int) -> None:
+    def _open_licensed_page(self, index: int) -> None:
+        if self._check_license():
+            self._show_page(index, enforce_license=False)
+
+    def _show_page(self, index: int, *, enforce_license: bool = True) -> None:
+        if enforce_license and index in {0, 1} and not self._check_license():
+            return
         if index == 0:
             if self._clone_preview_pending:
                 self._clone_preview_pending = False
@@ -589,6 +666,49 @@ class MainWindow(QMainWindow):
         self.nav_settings_button.setChecked(index == 2)
         self.nav_payment_button.setChecked(index == 3)
         self.nav_contact_button.setChecked(index == 4)
+
+    def _license_activated(self, result: LicenseActivationResult) -> None:
+        self._startup_license_message = None
+        if self._license_tray_icon is not None:
+            self._license_tray_icon.hide()
+        self._apply_license_state(result)
+
+    def _check_license(self) -> bool:
+        result = self._license_service.validate_saved()
+        self._apply_license_state(result)
+        if result.activated:
+            return True
+        self.payment_page.apply_saved_license(result)
+        self._show_page(3, enforce_license=False)
+        self._show_license_notification(result.message)
+        return False
+
+    def _apply_license_state(self, result: LicenseActivationResult) -> None:
+        self._license_valid = result.activated
+        self.nav_compose_button.set_license_locked(not result.activated)
+        self.nav_clone_button.set_license_locked(not result.activated)
+        self._refresh_actions()
+
+    def _show_license_notification(self, message: str) -> None:
+        if not message or not QSystemTrayIcon.isSystemTrayAvailable():
+            return
+        if self._license_tray_icon is None:
+            icon = self.windowIcon()
+            if icon.isNull():
+                application = QApplication.instance()
+                if application is not None:
+                    icon = application.style().standardIcon(
+                        QStyle.StandardPixmap.SP_MessageBoxWarning
+                    )
+            self._license_tray_icon = QSystemTrayIcon(icon, self)
+            self._license_tray_icon.setToolTip(self.windowTitle())
+        self._license_tray_icon.show()
+        self._license_tray_icon.showMessage(
+            "GPHI TTS · Bản quyền",
+            message,
+            QSystemTrayIcon.MessageIcon.Warning,
+            6_000,
+        )
 
     def _runtime_changed(self, runtime: object) -> None:
         self.active_model_card.set_runtime(runtime)
@@ -755,7 +875,8 @@ class MainWindow(QMainWindow):
 
     def _refresh_actions(self) -> None:
         ready = (
-            bool(self.text_input.text().strip())
+            self._license_valid
+            and bool(self.text_input.text().strip())
             and self.voice_selector.current_voice_id() is not None
             and self._view_model.state
             not in {
@@ -781,6 +902,8 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event: QCloseEvent) -> None:
         """Release worker and engine resources before closing."""
 
+        if self._license_tray_icon is not None:
+            self._license_tray_icon.hide()
         self._clone_playback.shutdown()
         self._playback.shutdown()
         self._view_model.shutdown()

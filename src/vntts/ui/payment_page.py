@@ -6,7 +6,7 @@ import re
 from collections.abc import Mapping
 from datetime import datetime
 
-from PySide6.QtCore import QThreadPool
+from PySide6.QtCore import QThreadPool, Signal
 from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
@@ -46,6 +46,8 @@ _PLAN_LABELS = {
 
 class PaymentPage(QWidget):
     """Collect payment details and expose future license activation."""
+
+    license_activated = Signal(object)
 
     def __init__(
         self,
@@ -251,6 +253,30 @@ class PaymentPage(QWidget):
         self.send_button.clicked.connect(self._submit_payment_request)
         self.activate_button.clicked.connect(self._activate_license)
 
+    def apply_saved_license(self, result: LicenseActivationResult) -> None:
+        """Reflect the startup license check without verifying it a second time."""
+
+        try:
+            saved_key = self._license_service.saved_key()
+        except ValidationError:
+            saved_key = None
+        if saved_key:
+            self.license_key_input.setText(saved_key)
+        self._clear_license_information()
+        if result.activated:
+            self._show_status(
+                self.license_status_label,
+                f"✓ {result.message}",
+                "success",
+            )
+            self._show_license_information(result)
+        elif result.message:
+            self._show_status(
+                self.license_status_label,
+                result.message,
+                "error",
+            )
+
     @staticmethod
     def _card() -> QFrame:
         card = QFrame()
@@ -342,7 +368,7 @@ class PaymentPage(QWidget):
             name=name,
             email=email,
             plan=str(plan),
-            mac_address=self._mac_address,
+            mac=self._mac_address,
         )
 
     def _payment_succeeded(self, response: object) -> None:
@@ -402,6 +428,7 @@ class PaymentPage(QWidget):
                 "success",
             )
             self._show_license_information(result)
+            self.license_activated.emit(result)
             return
         self._show_status(
             self.license_status_label,

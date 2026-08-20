@@ -4,12 +4,17 @@ from __future__ import annotations
 
 import base64
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from vntts.services.license_service import LicenseService
+from vntts.services.license_service import (
+    CLOCK_ROLLBACK_MESSAGE,
+    LicenseService,
+    LicenseStatus,
+)
 from vntts.utils.exceptions import ValidationError
 
 SAMPLE_LICENSE_KEY = (
@@ -161,3 +166,73 @@ def test_accepts_lifetime_plan_payload() -> None:
 
     assert result.activated
     assert result.plan == "lifetime"
+
+
+def test_persists_only_key_and_last_seen_then_revalidates(
+    tmp_path: Path,
+) -> None:
+    service = LicenseService(
+        tmp_path,
+        mac_provider=lambda: "F0:68:E3:C4:D1:A1",
+        now_provider=lambda: _VALID_NOW,
+    )
+
+    service.activate(SAMPLE_LICENSE_KEY)
+
+    state = json.loads((tmp_path / "license.json").read_text(encoding="utf-8"))
+    assert state == {
+        "license_key": SAMPLE_LICENSE_KEY,
+        "last_seen_time": "2026-08-20T00:00:00+00:00",
+    }
+    assert "activated" not in state
+
+    restarted = LicenseService(
+        tmp_path,
+        mac_provider=lambda: "F0:68:E3:C4:D1:A1",
+        now_provider=lambda: _VALID_NOW + timedelta(hours=1),
+    )
+    result = restarted.validate_saved()
+
+    assert result.activated
+    updated = json.loads((tmp_path / "license.json").read_text(encoding="utf-8"))
+    assert updated["last_seen_time"] == "2026-08-20T01:00:00+00:00"
+
+
+def test_clock_rollback_locks_license_without_reducing_last_seen(
+    tmp_path: Path,
+) -> None:
+    current = [_VALID_NOW]
+    service = LicenseService(
+        tmp_path,
+        mac_provider=lambda: "F0:68:E3:C4:D1:A1",
+        now_provider=lambda: current[0],
+    )
+    service.activate(SAMPLE_LICENSE_KEY)
+    original = (tmp_path / "license.json").read_text(encoding="utf-8")
+
+    current[0] = _VALID_NOW - timedelta(seconds=1)
+    result = service.validate_saved()
+
+    assert not result.activated
+    assert result.status is LicenseStatus.CLOCK_ROLLBACK
+    assert result.message == CLOCK_ROLLBACK_MESSAGE
+    assert (tmp_path / "license.json").read_text(encoding="utf-8") == original
+
+
+def test_expiration_is_detected_during_next_saved_license_check(
+    tmp_path: Path,
+) -> None:
+    current = [datetime(2027, 8, 19, 7, 47, tzinfo=UTC)]
+    service = LicenseService(
+        tmp_path,
+        mac_provider=lambda: "F0:68:E3:C4:D1:A1",
+        now_provider=lambda: current[0],
+    )
+    service.activate(SAMPLE_LICENSE_KEY)
+
+    current[0] = datetime(2027, 8, 19, 7, 49, tzinfo=UTC)
+    result = service.validate_saved()
+
+    assert not result.activated
+    assert result.status is LicenseStatus.EXPIRED
+    assert result.message == "Mã kích hoạt đã hết hạn."

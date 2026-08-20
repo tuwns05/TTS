@@ -21,9 +21,9 @@ tts:
   default_engine: "vieneu-v3"
   production_default_engine: "vieneu-v3"
 
-# Để trống endpoint khi backend chưa sẵn sàng; PaymentService sẽ dùng mock.
+# Endpoint tạm để kiểm thử backend localhost. Thay bằng URL production khi có server.
 payment:
-  api_endpoint: "" # Ví dụ: https://example.com/api/payment/request
+  api_endpoint: "http://127.0.0.1:8000/payment/request"
   request_timeout_seconds: 10
   # Giá mẫu; có thể chỉnh trực tiếp tại đây trước khi phát hành.
   plan_prices_vnd:
