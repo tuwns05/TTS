@@ -8,7 +8,9 @@ import importlib.util
 import re
 import warnings
 from collections.abc import Callable
+from concurrent.futures import CancelledError
 from pathlib import Path
+from threading import Event
 from typing import Protocol
 
 import numpy as np
@@ -32,6 +34,7 @@ from vntts.engines.model_bundle import (
     configure_offline_huggingface_cache,
     validate_vieneu_v3_bundle,
 )
+from vntts.engines.vieneu_cancel import install_vieneu_cancel_support
 from vntts.utils.exceptions import (
     EngineLoadError,
     EngineNotLoadedError,
@@ -193,6 +196,7 @@ class BaseVieNeuEngine(BaseTTSEngine):
         self,
         text: str,
         options: EngineSynthesisOptions,
+        cancel_event: Event | None = None,
     ) -> SynthesisResult:
         runtime = self._runtime
         if runtime is None:
@@ -205,6 +209,8 @@ class BaseVieNeuEngine(BaseTTSEngine):
             raise ValidationError("Giọng đọc không tồn tại trong engine đã chọn.")
 
         try:
+            if cancel_event is not None and cancel_event.is_set():
+                raise CancelledError()
             if options.reference_audio_path is not None:
                 if not self._capabilities.voice_cloning:
                     raise ValidationError(
@@ -222,6 +228,8 @@ class BaseVieNeuEngine(BaseTTSEngine):
             else:
                 voice = runtime.get_preset_voice(options.voice_id)
                 audio = runtime.infer(text=text.strip(), voice=voice)
+        except CancelledError:
+            raise
         except ValidationError:
             raise
         except Exception as exc:
@@ -421,6 +429,7 @@ class VieNeuV3Engine(BaseTTSEngine):
                     device=attempt_device,
                     backend=attempt_backend,
                 )
+                install_vieneu_cancel_support(runtime)
                 raw_voices = runtime.list_preset_voices()
                 voices = [
                     VoiceInfo(
@@ -492,6 +501,7 @@ class VieNeuV3Engine(BaseTTSEngine):
         self,
         text: str,
         options: EngineSynthesisOptions,
+        cancel_event: Event | None = None,
     ) -> SynthesisResult:
         runtime = self._runtime
         if runtime is None:
@@ -524,6 +534,7 @@ class VieNeuV3Engine(BaseTTSEngine):
                     text=text.strip(),
                     voice={"speaker_emb": speaker_emb, "codes": ref_codes},
                     style=options.style_id,
+                    cancel_event=cancel_event,
                 )
             elif options.reference_audio_path is not None:
                 reference_path = (
@@ -544,6 +555,7 @@ class VieNeuV3Engine(BaseTTSEngine):
                         text=text.strip(),
                         ref_audio=str(reference_path),
                         style=options.style_id,
+                        cancel_event=cancel_event,
                     )
             else:
                 voice = runtime.get_preset_voice(options.voice_id)
@@ -551,7 +563,10 @@ class VieNeuV3Engine(BaseTTSEngine):
                     text=text.strip(),
                     voice=voice,
                     style=options.style_id,
+                    cancel_event=cancel_event,
                 )
+        except CancelledError:
+            raise
         except ValidationError:
             raise
         except Exception as exc:

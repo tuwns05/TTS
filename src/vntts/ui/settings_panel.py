@@ -298,7 +298,7 @@ class VoiceStyleWidget(QGroupBox):
         style_label = QLabel("Phong cách đọc", self)
         style_label.setObjectName("fieldLabel")
         style_label.setProperty("role", "secondary")
-        style_label.setFixedWidth(THEME.space_6 * 3)
+        style_label.setFixedWidth(THEME.space_6 * 3 + THEME.space_2)
         self.style_combo = ChevronComboBox(self)
         self.style_combo.setObjectName("styleCombo")
         self.style_combo.setAccessibleName("Phong cách đọc")

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from threading import Event
 
 import numpy as np
 
@@ -85,6 +86,7 @@ class BaseTTSEngine(ABC):
         self,
         text: str,
         options: EngineSynthesisOptions,
+        cancel_event: Event | None = None,
     ) -> SynthesisResult:
         """Synthesize text into an engine-neutral audio result."""
 

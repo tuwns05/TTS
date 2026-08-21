@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import time
+from concurrent.futures import CancelledError
+from inspect import Parameter, signature
+from threading import Event
 
 import numpy as np
 from loguru import logger
@@ -10,10 +13,12 @@ from loguru import logger
 from vntts.db.models import (
     AudioEffects,
     EngineRuntimeInfo,
+    EngineSynthesisOptions,
     SynthesisRequest,
     SynthesisResult,
     VoiceInfo,
 )
+from vntts.engines.base import BaseTTSEngine
 from vntts.engines.factory import EngineFactory, EngineLifecycleManager, EngineRegistry
 from vntts.utils.exceptions import (
     AppError,
@@ -21,6 +26,29 @@ from vntts.utils.exceptions import (
     SynthesisError,
     ValidationError,
 )
+
+
+def _synthesize_with_cancel_event(
+    engine: BaseTTSEngine,
+    text: str,
+    options: EngineSynthesisOptions,
+    cancel_event: Event | None,
+) -> SynthesisResult:
+    """Call new engines with cancellation while retaining legacy adapters."""
+
+    synthesize = engine.synthesize
+    try:
+        parameters = signature(synthesize).parameters.values()
+        accepts_cancel_event = any(
+            parameter.name == "cancel_event"
+            or parameter.kind is Parameter.VAR_KEYWORD
+            for parameter in parameters
+        )
+    except (TypeError, ValueError):
+        accepts_cancel_event = False
+    if accepts_cancel_event:
+        return synthesize(text, options, cancel_event=cancel_event)
+    return synthesize(text, options)
 
 
 def _phase_vocoder(spec: np.ndarray, rate: float, hop_length: int) -> np.ndarray:
@@ -191,8 +219,15 @@ class SynthesizeSpeech:
             device_name="CPU",
         )
 
-    def execute(self, request: SynthesisRequest) -> SynthesisResult:
+    def execute(
+        self,
+        request: SynthesisRequest,
+        cancel_event: Event | None = None,
+    ) -> SynthesisResult:
         """Run synthesis without logging the user's text payload."""
+
+        if cancel_event is not None and cancel_event.is_set():
+            raise CancelledError()
 
         text = request.text.strip()
         if not text:
@@ -228,9 +263,18 @@ class SynthesizeSpeech:
         try:
             raw_result = self._lifecycle.run_with_active(
                 request.engine_id,
-                lambda engine: engine.synthesize(text, request.options),
+                lambda engine: _synthesize_with_cancel_event(
+                    engine,
+                    text,
+                    request.options,
+                    cancel_event,
+                ),
             )
+            if cancel_event is not None and cancel_event.is_set():
+                raise CancelledError()
             result = apply_audio_effects(raw_result, request.effects)
+        except CancelledError:
+            raise
         except AppError:
             raise
         except Exception as exc:

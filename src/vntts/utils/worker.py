@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from concurrent.futures import CancelledError
+from inspect import Parameter, signature
 from threading import Event
 from typing import Generic, ParamSpec, TypeVar
 
@@ -35,6 +37,7 @@ class TaskWorker(QRunnable, Generic[P, R]):
         self._args = args
         self._kwargs = kwargs
         self._cancel_event = Event()
+        self._inject_cancel_event = self._accepts_cancel_event(function)
         self.signals = WorkerSignals()
         self.setAutoDelete(True)
 
@@ -47,6 +50,25 @@ class TaskWorker(QRunnable, Generic[P, R]):
         """Return whether cancellation has been requested."""
 
         return self._cancel_event.is_set()
+
+    @property
+    def cancel_event(self) -> Event:
+        """Expose the cooperative token passed to cancellation-aware callables."""
+
+        return self._cancel_event
+
+    @staticmethod
+    def _accepts_cancel_event(function: Callable[..., object]) -> bool:
+        """Return whether a callable explicitly opts into the cancellation token."""
+
+        try:
+            parameter = signature(function).parameters.get("cancel_event")
+        except (TypeError, ValueError):
+            return False
+        return parameter is not None and parameter.kind in {
+            Parameter.POSITIONAL_OR_KEYWORD,
+            Parameter.KEYWORD_ONLY,
+        }
 
     def report_progress(self, percent: int, message: str = "") -> None:
         """Emit bounded progress for callables that explicitly report it."""
@@ -62,11 +84,16 @@ class TaskWorker(QRunnable, Generic[P, R]):
             if self.is_cancelled():
                 self.signals.cancelled.emit()
                 return
-            result = self._function(*self._args, **self._kwargs)
+            kwargs = self._kwargs
+            if self._inject_cancel_event:
+                kwargs = {**kwargs, "cancel_event": self._cancel_event}
+            result = self._function(*self._args, **kwargs)
             if self.is_cancelled():
                 self.signals.cancelled.emit()
             else:
                 self.signals.result.emit(result)
+        except CancelledError:
+            self.signals.cancelled.emit()
         except AppError as exc:
             logger.opt(exception=exc).warning(
                 "Tác vụ nền thất bại: {}", type(exc).__name__

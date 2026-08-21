@@ -1,16 +1,17 @@
 """Tests for the synthesize-speech use case."""
 
-import numpy as np
+from threading import Event
 
+import numpy as np
 import pytest
 from loguru import logger
 
+from tests.stubs import StubTTSEngine
 from vntts.db.models import AudioEffects, EngineSynthesisOptions, SynthesisRequest
 from vntts.engines.base import EngineCapabilities
 from vntts.engines.factory import EngineFactory, EngineRegistry
 from vntts.services.synthesis import SynthesizeSpeech
 from vntts.utils.exceptions import EngineNotFoundError, ValidationError
-from tests.stubs import StubTTSEngine
 
 
 def _use_case() -> SynthesizeSpeech:
@@ -69,6 +70,31 @@ def test_loads_engine_and_returns_valid_result() -> None:
 
     assert result.audio.ndim == 1
     assert result.sample_rate > 0
+
+
+def test_passes_same_cancel_event_to_engine() -> None:
+    received: list[Event | None] = []
+
+    class CancelAwareStub(StubTTSEngine):
+        def synthesize(  # type: ignore[override]
+            self,
+            text: str,
+            options: EngineSynthesisOptions,
+            cancel_event: Event | None = None,
+        ):
+            received.append(cancel_event)
+            return super().synthesize(text, options)
+
+    registry = EngineRegistry()
+    registry.register("stub", CancelAwareStub, CancelAwareStub.INFO)
+    cancel_event = Event()
+
+    SynthesizeSpeech(EngineFactory(registry), registry).execute(
+        _request("Xin chÃ o"),
+        cancel_event=cancel_event,
+    )
+
+    assert received == [cancel_event]
 
 
 def test_clone_request_bypasses_preset_validation(tmp_path) -> None:

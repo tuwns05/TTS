@@ -641,6 +641,12 @@ def test_settings_sections_are_separate_cards(qtbot, settings: Settings) -> None
         for index in range(window.voice_style.style_combo.count())
     ] == ["Tự nhiên", "Tin tức", "Kể chuyện"]
     assert window.voice_style.current_style_id() == "tu_nhien"
+    style_label = next(
+        label
+        for label in window.voice_style.findChildren(QLabel, "fieldLabel")
+        if label.text() == "Phong cách đọc"
+    )
+    assert style_label.width() == THEME.space_6 * 3 + THEME.space_2
     assert window.active_model_card.property("card") is True
     assert window.active_model_card.parent() is window._settings_container
     assert window.voice_selector.parent() is window._settings_container
@@ -987,6 +993,21 @@ def test_ui_stays_responsive_during_synthesis(qtbot, settings: Settings) -> None
     assert window.waveform.has_audio
     assert bool(window.waveform.canvas._envelope.max() > 0)
     assert window.status_label.property("state") == "success"
+
+
+def test_cancelled_synthesis_restores_normal_ui(qtbot, settings: Settings) -> None:  # type: ignore[no-untyped-def]
+    window, view_model = _window(qtbot, settings)
+    window.text_input.editor.setPlainText("Dừng tác vụ tổng hợp đang chạy.")
+
+    window.synthesize_button.click()
+    qtbot.waitUntil(lambda: view_model.state == "synthesizing", timeout=1_000)
+    window.cancel_button.click()
+
+    qtbot.waitUntil(lambda: view_model.state == "cancelled", timeout=3_000)
+    assert not window.cancel_button.isVisible()
+    assert window.synthesize_button.isEnabled()
+    assert window.text_input.open_file_button.isEnabled()
+    assert not window.waveform.has_audio
 
 
 def test_export_buttons_choose_destination_after_synthesis(

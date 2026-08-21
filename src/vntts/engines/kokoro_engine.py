@@ -6,7 +6,9 @@ import gc
 import importlib
 import importlib.util
 from collections.abc import Callable
+from concurrent.futures import CancelledError
 from pathlib import Path
+from threading import Event
 from typing import Protocol
 
 from vntts.db.models import (
@@ -164,6 +166,7 @@ class KokoroVIEngine(BaseTTSEngine):
         self,
         text: str,
         options: EngineSynthesisOptions,
+        cancel_event: Event | None = None,
     ) -> SynthesisResult:
         if self._runtime is None:
             raise EngineNotLoadedError("Kokoro-Vietnamese chưa được load.")
@@ -177,8 +180,12 @@ class KokoroVIEngine(BaseTTSEngine):
             self._load_voice(options.voice_id)
 
         try:
+            if cancel_event is not None and cancel_event.is_set():
+                raise CancelledError()
             output = self._runtime.synthesize(text=text.strip())
             audio = output[0] if isinstance(output, tuple) else output
+        except CancelledError:
+            raise
         except Exception as exc:
             raise SynthesisError("Kokoro-Vietnamese không thể tổng hợp giọng nói.") from exc
         return SynthesisResult(to_mono_float32(audio), self._sample_rate)

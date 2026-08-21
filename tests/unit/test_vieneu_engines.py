@@ -1,7 +1,9 @@
 """Contract tests for VieNeu adapters without loading real models."""
 
 import warnings
+from concurrent.futures import CancelledError
 from pathlib import Path
+from threading import Event
 
 import numpy as np
 import pytest
@@ -293,6 +295,57 @@ def test_vieneu_v3_only_passes_supported_arguments_to_runtime(tmp_path: Path) ->
         "voice": {"id": "bac_si_tuyen"},
         "style": "tu_nhien",
     }
+
+
+def test_vieneu_v3_cancels_between_frames_with_one_runtime_infer(
+    tmp_path: Path,
+) -> None:
+    model_path = tmp_path / "vieneu-v3"
+    tokenizer_path = model_path / "moss-tokenizer"
+    tokenizer_path.mkdir(parents=True)
+    cancel_event = Event()
+
+    class FrameEngine:
+        def __init__(self) -> None:
+            self.frames = 0
+
+        def _acoustic_frame(self) -> None:
+            self.frames += 1
+            cancel_event.set()
+
+    class Runtime(_VieNeuRuntime):
+        def __init__(self) -> None:
+            super().__init__()
+            self.engine = FrameEngine()
+            self.infer_calls = 0
+            self.received_cancel_event: object = None
+
+        def infer(self, **kwargs: object) -> np.ndarray:
+            self.infer_calls += 1
+            self.received_cancel_event = kwargs.get("cancel_event")
+            for _ in range(5):
+                self.engine._acoustic_frame()
+            return np.ones(1, dtype=np.float32)
+
+    runtime = Runtime()
+    engine = VieNeuV3Engine(
+        model_path,
+        tokenizer_path=tokenizer_path,
+        sdk_factory=lambda **_: runtime,
+    )
+    engine.load("cpu")
+
+    with pytest.raises(CancelledError):
+        engine.synthesize(
+            "Xin chÃ o",
+            EngineSynthesisOptions("bac_si_tuyen"),
+            cancel_event=cancel_event,
+        )
+
+    assert runtime.received_cancel_event is cancel_event
+    assert runtime.infer_calls == 1
+    assert runtime.engine.frames == 1
+    assert not runtime.closed
 
 
 def test_vieneu_v3_uses_saved_features_without_reference_audio(tmp_path: Path) -> None:
