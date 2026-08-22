@@ -1,10 +1,15 @@
-# Hướng dẫn Development
+# Hướng dẫn phát triển GPHI-TTS
 
-Ứng dụng development chỉ đăng ký VieNeu-TTS v3-Turbo làm engine bắt buộc. Không có engine mô phỏng trong mã nguồn. Khi chưa có model local, VieNeu SDK sử dụng Hugging Face cache và tải model chính thức ở lần chạy đầu; các lần sau có thể dùng cache hiện có.
+## 1. Môi trường hỗ trợ
 
-## 1. Cài đặt
+- Windows 10/11 x64.
+- Python `>=3.11,<3.12`.
+- PowerShell và Git.
+- Driver NVIDIA/CUDA tương thích nếu phát triển đường chạy GPU.
 
-Yêu cầu Windows 10/11 x64, Python `3.11.x`, PowerShell và Git.
+Ứng dụng thực tế chỉ đăng ký `vieneu-v3`. VieNeu v2 và Kokoro có adapter/test để mở rộng sau, nhưng không được composition root khởi tạo.
+
+## 2. Cài đặt
 
 ```powershell
 py -3.11 -m venv .venv
@@ -14,75 +19,165 @@ python -m pip install -r requirements/dev.txt
 python -m pip install -r requirements/vieneu.txt
 ```
 
-Nếu dùng NVIDIA CUDA, cài bản PyTorch phù hợp trước khi cài VieNeu, ví dụ cho CUDA 12.8:
+`requirements/dev.txt` kéo `requirements/base.txt`, còn `base.txt` cài project editable và dependency trung lập với engine. `requirements/vieneu.txt` thêm VieNeu cùng dependency runtime.
+
+Nếu dùng NVIDIA, cài PyTorch phù hợp trước VieNeu. Ví dụ môi trường cùng dòng CUDA 12.8 với production lock:
 
 ```powershell
 python -m pip install torch==2.8.0 torchaudio==2.8.0 --index-url https://download.pytorch.org/whl/cu128
+python -m pip install -r requirements/vieneu.txt
 ```
 
-Không cài `hf-gradio`; nếu môi trường cũ có gói này thì gỡ bằng `python -m pip uninstall -y hf-gradio`.
-
-## 2. Chạy ứng dụng
+Không cài `hf-gradio`. Nếu môi trường cũ đã có gói này:
 
 ```powershell
-python -m vntts
+python -m pip uninstall -y hf-gradio
+python -m pip check
 ```
 
-Luồng development:
+## 3. Model development
 
-1. Registry đăng ký `vieneu-v3` và chọn nó làm mặc định.
-2. Nếu `resources/models/vieneu-v3` tồn tại, SDK nạp model từ thư mục đó.
-3. Nếu không có model local, SDK dùng repository `pnnbao-ump/VieNeu-TTS-v3-Turbo`; model đã tải được lấy từ Hugging Face cache, model thiếu sẽ được tải qua Internet.
-4. Thiết bị `auto` chọn CUDA khi PyTorch nhận GPU, nếu không sẽ dùng CPU backend của VieNeu.
-5. Model được load và tổng hợp trong worker để không khóa giao diện.
-6. Waveform mới nhất được chuyển thành WAV PCM trong bộ nhớ để Play/Pause/Stop; buffer cũ được giải phóng khi tổng hợp lại hoặc đóng ứng dụng.
-
-Cache mặc định nằm tại `%USERPROFILE%\.cache\huggingface\hub`. Có thể chạy hoàn toàn local trong development bằng cách đặt model vào:
+Khi `resources/models/vieneu-v3` là thư mục model development, app truyền đường dẫn local cho VieNeu. Layout:
 
 ```text
 resources/models/vieneu-v3/
+├── update/
+├── onnx_int8/
+└── moss-tokenizer/
 ```
 
-hoặc trỏ tới thư mục model bằng:
+Nếu thư mục local không tồn tại, development cho phép SDK dùng:
+
+- `pnnbao-ump/VieNeu-TTS-v3-Turbo`;
+- `OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano`;
+- Hugging Face cache hiện có hoặc tải phần còn thiếu.
+
+Có thể đổi thư mục cha:
 
 ```powershell
 $env:VNTTS_BUNDLED_MODELS_DIR = "D:\models"
 python -m vntts
 ```
 
-Trong đó model phải nằm tại `D:\models\vieneu-v3`.
+Nếu `vieneu-v3` chứa `manifest.json`, app coi đây là production-style bundle, xác minh checksum và ép Hugging Face offline.
 
-## 3. Chạy test
+## 4. Chạy và debug
+
+```powershell
+python -m vntts
+```
+
+Composition root thực hiện:
+
+1. đọc và chuẩn hóa cấu hình;
+2. cấu hình log;
+3. đăng ký lazy provider cho VieNeu v3;
+4. tạo lifecycle, use case, store và các trang UI;
+5. hiển thị cửa sổ;
+6. nhận diện phần cứng và load model qua worker sau khi event loop bắt đầu.
+
+Các tác vụ load model, tổng hợp, nhập tài liệu, enrollment và thanh toán đều chạy ngoài UI thread. Khi đóng cửa sổ, app hủy worker, dừng playback và unload engine.
+
+### Chạy như production từ source
+
+```powershell
+$env:VNTTS_ENVIRONMENT = "production"
+$env:VNTTS_BUNDLED_MODELS_DIR = (Resolve-Path ".\resources\models").Path
+python -m vntts
+```
+
+Chế độ này yêu cầu bundle có `manifest.json`; không fallback ra Internet.
+
+## 5. Cấu hình
+
+File mặc định: `src/vntts/config/default.yaml`.
+
+| Biến môi trường | Áp dụng cho |
+|---|---|
+| `VNTTS_APP_DATA_DIR` | Root của mọi đường dẫn ghi được tương đối. |
+| `VNTTS_BUNDLED_MODELS_DIR` | Model read-only đi cùng app. |
+| `VNTTS_MODELS_DIR` | Model tùy chọn. |
+| `VNTTS_DATA_DIR` | License và voice profile. |
+| `VNTTS_CACHE_DIR` | Cache runtime/model validation. |
+| `VNTTS_LOGS_DIR` | Log. |
+| `VNTTS_ENVIRONMENT` | `development`/`production`. |
+| `VNTTS_DEFAULT_ENGINE` | Engine mặc định. |
+| `VNTTS_PAYMENT_API_ENDPOINT` | Ghi đè URL POST bằng giá trị không rỗng. |
+| `VNTTS_LOG_LEVEL` | Mức Loguru. |
+
+Đường dẫn tương đối cho `data`, `cache`, `logs`, `models` được resolve dưới app-data. `bundled_models_dir` được resolve dưới repository ở source hoặc `_MEIPASS` trong frozen build.
+
+Không commit model, cache, log, dữ liệu người dùng, `.venv`, `.venv-build`, `build`, `dist` hoặc `release`.
+
+## 6. Kiểm thử và lint
 
 ```powershell
 python -m pytest
+python -m ruff check src tests scripts
 ```
 
-Test dùng `StubTTSEngine` nằm riêng trong `tests/stubs.py`, do đó unit/UI test không tải model thật. Trong CI/headless:
+Headless Qt:
 
 ```powershell
 $env:QT_QPA_PLATFORM = "offscreen"
 python -m pytest
 ```
 
-## 4. Cấu hình và dữ liệu
+Các nhóm test chính:
 
-Cấu hình mặc định: `src/vntts/config/default.yaml`.
+- engine registry/factory/lifecycle và adapter VieNeu/Kokoro;
+- CPU/GPU selection, fallback, bundle checksum và cancellation;
+- DSP tốc độ/cao độ/volume;
+- nhập TXT/SRT/DOCX/PDF;
+- playback, seek, WAV/MP3 và thay đổi thiết bị audio;
+- voice enrollment/profile;
+- license, payment, settings và logging;
+- UI responsive, license gate và các workflow chính.
 
-| Biến | Tác dụng |
+Test dùng stub/mock và thư mục tạm, không cần model thật. Smoke test model thật thuộc quy trình production.
+
+## 7. Quy ước khi thay đổi
+
+- UI không import trực tiếp SDK TTS.
+- SDK object không đi qua biên adapter.
+- Nghiệp vụ mới đặt trong service/use case và inject vào UI.
+- Tác vụ có I/O hoặc tính toán đáng kể phải chạy qua `TaskWorker`.
+- Exception kỹ thuật được chuyển thành `AppError`/thông báo thân thiện trước UI.
+- Không log toàn văn, waveform, license payload đã giải mã hoặc mẫu giọng.
+- Engine mới phải khai báo metadata/capability mà không cần load model.
+- Chỉ một engine được active; mọi đường thoát phải giải phóng runtime.
+- Thêm dependency production phải cập nhật lock hash và inventory license.
+
+## 8. Thanh toán và license trong development
+
+Endpoint mặc định hiện là local test server:
+
+```text
+http://127.0.0.1:8000/payment/request
+```
+
+Muốn test UI không gọi mạng, đặt `payment.api_endpoint: ""` trong YAML được load. Do environment override hiện dùng phép `or`, biến môi trường rỗng không thể bật mock:
+
+```yaml
+payment:
+  api_endpoint: ""
+```
+
+UI đang hiển thị năm gói nhưng `_validated_payment_request()` chỉ chấp nhận `monthly` và `yearly`; `PaymentRequest` còn gửi `LOCAL_TEST_PRICE_VND = 1_990_000` thay vì giá được chọn. Phải đồng bộ UI/validation/payload và chuyển quyền quyết định giá sang server trước release.
+
+`LicenseService` hiện dùng public key có tên `TEST_LICENSE_PUBLIC_KEY`. Đây là release blocker: trước production thật phải thay bằng public key phát hành, giữ private key hoàn toàn ngoài repository/app và cập nhật test fixture tương ứng.
+
+## 9. Xử lý lỗi thường gặp
+
+| Lỗi | Kiểm tra |
 |---|---|
-| `VNTTS_BUNDLED_MODELS_DIR` | Thư mục cha chứa `vieneu-v3`. |
-| `VNTTS_MODELS_DIR` | Nơi lưu model tùy chọn. |
-| `VNTTS_ENVIRONMENT` | `development` hoặc `production`. |
-| `VNTTS_DEFAULT_ENGINE` | Engine mặc định; cấu hình chuẩn là `vieneu-v3`. |
-| `VNTTS_LOG_LEVEL` | Mức log. |
+| `No module named vntts` | Kích hoạt `.venv`, chạy lại `pip install -r requirements/dev.txt`. |
+| `No module named vieneu` | Chạy `pip install -r requirements/vieneu.txt`. |
+| Không thấy CUDA | `python -c "import torch; print(torch.cuda.is_available(), torch.version.cuda)"`. |
+| Load lần đầu rất lâu | Kiểm tra mạng, dung lượng đĩa và Hugging Face cache. |
+| Production cố tải mạng | Bundle/path sai; kiểm tra `manifest.json` và biến môi trường. |
+| Qt test lỗi display | Đặt `QT_QPA_PLATFORM=offscreen`. |
+| Không đọc DOCX/PDF | Chạy `python -m pip check`, xác nhận `python-docx` và `pypdf`. |
+| MP3 export lỗi | Xác nhận `lameenc` đã được cài/đóng gói. |
 
-Không commit `.venv`, model, cache, log hoặc dữ liệu người dùng.
-
-## 5. Xử lý lỗi nhanh
-
-- Không import được `vntts`: chạy `python -m pip install -r requirements/base.txt`.
-- Không import được `vieneu`: chạy `python -m pip install -r requirements/vieneu.txt`.
-- Không thấy CUDA: kiểm tra `python -c "import torch; print(torch.cuda.is_available(), torch.version.cuda)"`.
-- Lỗi dependency: chạy `python -m pip check`, gỡ `hf-gradio` nếu còn trong môi trường cũ.
-- Lần đầu đứng lâu ở bước load: kiểm tra Internet và dung lượng đĩa vì SDK đang tải model/tokenizer.
+Xem thêm [kiến trúc](ARCHITECTURE.md), [model bundle](MODEL_DISTRIBUTION.md) và [quy trình release](PRODUCTION.md).

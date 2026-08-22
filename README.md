@@ -1,166 +1,169 @@
-# Ứng dụng TTS Desktop Offline Tiếng Việt
+# GPHI-TTS
 
-> Phạm vi production hiện tại chỉ gồm VieNeu-TTS v3 Turbo chạy offline bằng
-> ONNX/CPU. V2 và Kokoro được giữ cho giai đoạn phát triển sau, không được đăng
-> ký hoặc đóng vào artifact production hiện tại.
+GPHI-TTS là ứng dụng desktop chuyển văn bản tiếng Việt thành giọng nói, ưu tiên xử lý cục bộ và hoạt động offline trên Windows. Bản production hiện tại sử dụng **VieNeu-TTS v3-Turbo**, chạy bằng **PyTorch/CUDA trên GPU NVIDIA** hoặc **ONNX trên CPU**.
 
-Ứng dụng desktop chuyển văn bản tiếng Việt thành giọng nói trên máy người dùng. Văn bản, waveform và mẫu giọng được xử lý cục bộ; ứng dụng không gửi nội dung người dùng lên máy chủ trong quá trình tổng hợp offline.
+> Trạng thái dự án: ứng dụng đã hoàn thiện luồng chính gồm kích hoạt bản quyền, tổng hợp giọng, nhập tài liệu, điều chỉnh âm thanh, phát/xuất audio, nhân bản giọng và đóng gói Windows. Trước khi phát hành công khai vẫn cần hoàn tất các mục trong [checklist release](docs/PRODUCTION.md#8-checklist-trước-khi-phát-hành).
 
-## Chức năng chính
+## Tính năng
 
-- Nhập văn bản tiếng Việt và chọn engine/giọng đọc.
-- Chạy tác vụ tổng hợp trong worker nền để không khóa giao diện Qt.
-- Giữ waveform vừa tổng hợp và hỗ trợ Play/Pause/Stop bằng Qt Multimedia.
-- Giao diện tự chuyển giữa bố cục rộng, compact và dọc; có thanh cuộn khi cửa sổ nhỏ.
-- Hỗ trợ adapter local cho VieNeu-TTS v3-Turbo, VieNeu-TTS v2-Turbo và Kokoro-Vietnamese.
-- Chỉ giữ một model active; khi chuyển engine, model trước được unload để kiểm soát RAM/VRAM.
-- Phát hiện CPU, RAM và CUDA GPU để đưa ra khuyến nghị engine có giải thích.
-- Cấu hình đường dẫn model, dữ liệu, cache, log và engine mặc định bằng YAML hoặc biến môi trường.
-- Giữ model, log và dữ liệu ứng dụng trong vùng lưu trữ cục bộ.
+- Tổng hợp văn bản tiếng Việt với giọng dựng sẵn của VieNeu v3.
+- Ba phong cách đọc: **Tự nhiên**, **Tin tức** và **Kể chuyện**.
+- Điều chỉnh tốc độ `0.5x–2.0x`, cao độ `-12–+12` semitone và âm lượng.
+- Nhập nội dung từ `TXT`, `SRT`, `DOCX` và PDF có lớp văn bản.
+- Phát, tạm dừng, dừng, tua trên waveform và xuất `WAV`/`MP3`.
+- Tạo hồ sơ giọng clone từ mẫu `WAV`, `MP3`, `FLAC`, `M4A` hoặc `OGG` (khả năng giải mã phụ thuộc libsndfile); lưu đặc trưng giọng cục bộ, không giữ bản audio tạm đã xử lý.
+- Đổi tên, xóa và nghe thử hồ sơ giọng đã tạo.
+- Tự phát hiện CPU, RAM và CUDA GPU; tự fallback từ GPU sang CPU khi chế độ tự động không khởi tạo được GPU.
+- Chọn thủ công `Tự động`, `GPU` hoặc `CPU` trong trang **Cài đặt**.
+- Xác minh license Ed25519 offline, gắn với MAC thiết bị và kiểm tra hết hạn/đảo ngược đồng hồ.
+- Giao diện responsive, tác vụ nặng chạy bằng worker nền và có thể hủy.
 
-## Engine
+## Phạm vi runtime
 
-| Engine | Phân phối | Thiết bị | Ghi chú |
+| Thành phần | Trạng thái | Thiết bị/backend | Ghi chú |
 |---|---|---|---|
-| `VieNeu-TTS v3-Turbo` | Đóng cùng bản production | CPU hoặc CUDA GPU | Engine mặc định production, model local, 48 kHz. |
-| `VieNeu-TTS v2-Turbo` | Model tùy chọn | CPU | Dùng backbone/codec local, 24 kHz. |
-| `Kokoro-Vietnamese` | Model tùy chọn | CPU | Dùng model, config và voicepack local. |
+| VieNeu-TTS v3-Turbo | Được đăng ký trong app | CUDA/PyTorch hoặc CPU/ONNX | Engine duy nhất của bản production, audio 48 kHz. |
+| VieNeu-TTS v2-Turbo | Có adapter và unit test | CPU | Chưa đăng ký trong composition root, không xuất hiện trên UI. |
+| Kokoro-Vietnamese | Có adapter và unit test | CPU | Chưa đăng ký trong composition root, không xuất hiện trên UI. |
 
-Khuyến nghị phần cứng không tự động ép đổi engine. Người dùng vẫn có thể chọn một engine khác trong số các engine đã được cài đặt và đăng ký thành công.
+Ứng dụng chỉ giữ một engine được load tại một thời điểm để kiểm soát RAM/VRAM. Ở chế độ `Tự động`, GPU chỉ được ưu tiên khi CUDA khả dụng và đạt ngưỡng VRAM cấu hình; nếu load GPU thất bại, VieNeu v3 tự chuyển sang ONNX/CPU.
 
-## Hoạt động offline
+## Quyền riêng tư và kết nối mạng
 
-- Development luôn dùng VieNeu-TTS v3-Turbo. Nếu chưa có model tại `resources/models/vieneu-v3`, SDK dùng Hugging Face cache và tải model chính thức ở lần chạy đầu.
-- Bản production phải chứa sẵn VieNeu-TTS v3-Turbo để sử dụng ngay lần mở đầu mà không cần Internet.
-- Ở production, v3 chỉ được đọc từ local path; adapter không fallback sang repository ID hoặc tự tải model khi startup.
-- V2 và Kokoro,... là model tùy chọn, được lưu trong app-data dưới cùng một model root sau khi người dùng chủ động cài đặt. Mỗi engine có thư mục con riêng (`vieneu-v2/`, `kokoro-vi/`) và model mới phải được đặt vào thư mục đó thay vì tạo thư mục rải rác bên ngoài root.
-- Ứng dụng không tự tải model khi khởi động hoặc khi khuyến nghị phần cứng thay đổi.
-- Mẫu giọng, văn bản và audio không được ghi đầy đủ vào log.
+- Tổng hợp, xử lý waveform, phát/xuất audio, tạo hồ sơ giọng và xác minh license diễn ra trên máy người dùng.
+- Production ép Hugging Face chạy offline và chỉ đọc model đã bundle; không tự tải model khi khởi động.
+- Log không ghi toàn bộ văn bản hoặc mẫu giọng của người dùng.
+- Trang **Thanh toán** có thể gửi tên, email, gói, giá và MAC đến endpoint được cấu hình. Đây là luồng mạng tách biệt với TTS. `PaymentService` dùng mock không mạng khi endpoint trong YAML là chuỗi rỗng.
 
-Layout bản production:
+## Yêu cầu
 
-```text
-VietnameseTTSDesktop/
-├── vntts.exe
-├── resources/
-│   └── models/
-│       └── vieneu-v3/
-│           ├── manifest.json
-│           ├── backbone/
-│           ├── codec/
-│           ├── voices/
-│           └── runtime-assets/
-└── licenses/
-```
-
-Chi tiết về model, manifest, checksum và license nằm trong [MODEL_DISTRIBUTION.md](docs/MODEL_DISTRIBUTION.md).
-
-## Yêu cầu phát triển
+### Người dùng bản đóng gói
 
 - Windows 10/11 x64.
-- Python `3.11.x`.
-- PowerShell và Git.
-- PyTorch/runtime CPU hoặc CUDA tương thích khi chạy engine thật.
+- CPU x64; khuyến nghị tối thiểu 8 GB RAM.
+- GPU NVIDIA/CUDA là tùy chọn; chế độ CPU/ONNX luôn là đường fallback.
+- Mã kích hoạt hợp lệ để dùng trang **Tạo giọng nói** và **Nhân bản giọng**.
 
-## Thiết lập môi trường
+### Môi trường phát triển
 
-Từ thư mục gốc của repository:
+- Windows 10/11 x64.
+- Python `3.11.x`, PowerShell và Git.
+- Internet ở lần đầu nếu chưa có model trong `resources/models/vieneu-v3` hoặc Hugging Face cache.
+
+## Cài đặt môi trường phát triển
 
 ```powershell
 py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
-python -m pip install -r requirements/base.txt
 python -m pip install -r requirements/dev.txt
-```
-
-Cài SDK cho engine cần sử dụng:
-
-```powershell
-# VieNeu v3/v2
 python -m pip install -r requirements/vieneu.txt
-
-# Hoặc Kokoro-Vietnamese
-python -m pip install -r requirements/kokoro.txt
 ```
 
-## Chuẩn bị model local
-
-VieNeu v3 dùng trong source/internal build:
-
-```text
-resources/
-└── models/
-    └── vieneu-v3/
-        ├── update/
-        ├── onnx_int8/
-        └── moss-tokenizer/
-```
-
-Model tùy chọn trên Windows:
-
-```text
-%LOCALAPPDATA%\VietnameseTTSDesktop\models\
-├── vieneu-v2\
-│   ├── backbone\
-│   └── codec\
-└── kokoro-vi\
-    ├── kokoro_vi.pth
-    ├── config.json
-    └── voicepacks\*.pt
-```
+Nếu dùng CUDA, cài bản PyTorch phù hợp với driver/runtime mục tiêu trước khi cài VieNeu. Quy trình build production hiện khóa PyTorch CUDA 12.8 trong `requirements/production.lock`.
 
 ## Chạy ứng dụng
 
-Chạy ở chế độ development:
-
 ```powershell
 python -m vntts
 ```
 
-Kiểm tra v3 với cấu hình production và model local:
+Hoặc sau khi package đã được cài editable:
 
 ```powershell
-$env:VNTTS_ENVIRONMENT = "production"
-$env:VNTTS_BUNDLED_MODELS_DIR = (Resolve-Path ".\resources\models").Path
+vntts
+```
+
+Trong development, nếu không có model local, SDK dùng repository chính thức và Hugging Face cache. Muốn chạy bằng model local:
+
+```text
+resources/models/vieneu-v3/
+├── update/
+├── onnx_int8/
+└── moss-tokenizer/
+```
+
+Hoặc trỏ thư mục cha bằng biến môi trường:
+
+```powershell
+$env:VNTTS_BUNDLED_MODELS_DIR = "D:\models"
 python -m vntts
 ```
 
-Chạy kiểm thử:
+Khi đó model phải nằm tại `D:\models\vieneu-v3`.
+
+## Kiểm thử
 
 ```powershell
 python -m pytest
+python -m ruff check src tests scripts
 ```
 
-## Cấu trúc dự án
+Chạy Qt test trong môi trường headless:
+
+```powershell
+$env:QT_QPA_PLATFORM = "offscreen"
+python -m pytest
+```
+
+Unit/UI test sử dụng stub và mock, không tải model thật. Build production có thêm smoke test tổng hợp thật bằng executable đã đóng gói.
+
+## Cấu hình
+
+Cấu hình mặc định nằm tại `src/vntts/config/default.yaml`. Các biến môi trường được hỗ trợ:
+
+| Biến | Ý nghĩa |
+|---|---|
+| `VNTTS_APP_DATA_DIR` | Ghi đè thư mục gốc dữ liệu người dùng; chủ yếu dùng cho test/dev. |
+| `VNTTS_BUNDLED_MODELS_DIR` | Thư mục cha chứa `vieneu-v3`. |
+| `VNTTS_MODELS_DIR` | Thư mục model tùy chọn. |
+| `VNTTS_DATA_DIR` | Hồ sơ giọng và trạng thái license. |
+| `VNTTS_CACHE_DIR` | Cache runtime và cache xác minh model. |
+| `VNTTS_LOGS_DIR` | Thư mục log. |
+| `VNTTS_ENVIRONMENT` | `development` hoặc `production`. |
+| `VNTTS_DEFAULT_ENGINE` | Engine mặc định; app hiện đăng ký `vieneu-v3`. |
+| `VNTTS_PAYMENT_API_ENDPOINT` | Ghi đè endpoint nhận yêu cầu thanh toán bằng một URL không rỗng. |
+| `VNTTS_LOG_LEVEL` | Mức log, ví dụ `INFO` hoặc `DEBUG`. |
+
+Mặc định dữ liệu ghi được nằm tại:
+
+```text
+%LOCALAPPDATA%\VietnameseTTSDesktop\
+├── data\
+│   ├── license.json
+│   └── voice_profiles\
+├── cache\
+├── logs\
+└── models\
+```
+
+## Cấu trúc repository
 
 ```text
 TTS/
-├── docs/                 # kiến trúc, development, production và phân phối model
-├── requirements/         # dependency nền tảng, test và SDK engine tùy chọn
+├── docs/                  # hướng dẫn người dùng, kiến trúc, dev và release
+├── packaging/             # PyInstaller, Inno Setup và thông báo license
+├── requirements/          # dependency dev, engine và production lock
+├── resources/             # tài nguyên đóng gói; model binary bị git-ignore
+├── scripts/               # chuẩn bị model, license và build production
 ├── src/vntts/
-│   ├── config/           # YAML settings và chuẩn hóa đường dẫn
-│   ├── db/               # model dữ liệu thuần Python
-│   ├── engines/          # contract, registry/factory/lifecycle và adapter TTS
-│   ├── services/         # workflow tổng hợp và dịch vụ phần cứng
-│   ├── ui/               # cửa sổ, ViewModel, widget và tài nguyên Qt
-│   ├── utils/            # exception, logging và worker dùng chung
-│   ├── __main__.py       # hỗ trợ python -m vntts
-│   └── main.py           # composition root của ứng dụng
-├── tests/                # unit test và UI test
-├── pyproject.toml
-└── README.md
+│   ├── config/            # cấu hình và theme
+│   ├── db/                # dataclass dùng chung
+│   ├── engines/           # contract, registry, lifecycle và adapter TTS
+│   ├── services/          # synthesis, audio, tài liệu, license, thanh toán
+│   ├── ui/                # cửa sổ và các trang PySide6
+│   └── utils/             # worker, logging, machine info và exception
+└── tests/                 # unit test và UI test
 ```
-
-Giải thích đầy đủ từng thư mục và file nằm trong [ARCHITECTURE.md](docs/ARCHITECTURE.md#8-cấu-trúc-thư-mục).
 
 ## Tài liệu
 
-- [Development](docs/DEVELOPMENT.md): cài dependency, chạy ứng dụng/test, cấu hình và xử lý lỗi.
-- [Production](docs/PRODUCTION.md): đóng gói, release gate, kiểm thử offline và vận hành.
-- [Model Distribution](docs/MODEL_DISTRIBUTION.md): layout v3 bundled và model tùy chọn.
-- [Architecture](docs/ARCHITECTURE.md): trách nhiệm từng package/file và quy tắc dependency.
+- [Hướng dẫn sử dụng](docs/USER_GUIDE.md)
+- [Hướng dẫn phát triển](docs/DEVELOPMENT.md)
+- [Kiến trúc hệ thống](docs/ARCHITECTURE.md)
+- [Đóng gói và phát hành](docs/PRODUCTION.md)
+- [Phân phối model VieNeu v3](docs/MODEL_DISTRIBUTION.md)
 
 ## License
 
-License của mã ứng dụng chưa được công bố. Bản phân phối phải kèm license và attribution của từng SDK, model, codec, voicepack và dependency liên quan.
+License của mã ứng dụng chưa được công bố trong repository. Bản phân phối phải kèm EULA/license của ứng dụng, `THIRD_PARTY_NOTICES.txt`, license của các dependency/model và nghĩa vụ LGPL tương ứng. Xem checklist chi tiết trong [tài liệu production](docs/PRODUCTION.md).
