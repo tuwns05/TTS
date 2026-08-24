@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMainWindow,
+    QMessageBox,
     QPushButton,
     QScrollArea,
     QStackedWidget,
@@ -208,6 +209,16 @@ class MainWindow(QMainWindow):
 
         app_title = QLabel("Tạo giọng nói", self)
         app_title.setProperty("role", "title")
+        self.compose_help_button = QPushButton("Hướng dẫn", self)
+        self.compose_help_button.setObjectName("composeHelpButton")
+        self.compose_help_button.setProperty("variant", "help")
+        self.compose_help_button.setAccessibleName(
+            "Mở hướng dẫn sử dụng trang tạo giọng nói"
+        )
+        self.compose_help_button.setToolTip(
+            "Xem hướng dẫn sử dụng các chức năng tạo giọng nói"
+        )
+        self.compose_help_button.setFixedHeight(30)
         self._toolbar = QFrame(self)
         self._toolbar.setObjectName("toolbar")
         self._toolbar.setFixedHeight(THEME.toolbar_height)
@@ -218,6 +229,7 @@ class MainWindow(QMainWindow):
         self._header_layout.setContentsMargins(THEME.space_4, 0, THEME.space_4, 0)
         self._header_layout.addWidget(app_title)
         self._header_layout.addStretch()
+        self._header_layout.addWidget(self.compose_help_button)
 
         self._player_card = QFrame(self)
         self._player_card.setObjectName("playerCard")
@@ -335,6 +347,19 @@ class MainWindow(QMainWindow):
         self.sidebar_brand.setObjectName("sidebarBrand")
         self.sidebar_brand.setProperty("role", "section")
         self.sidebar_brand.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.sidebar_tagline = QLabel(
+            "Chuyển văn bản thành giọng nói",
+            self._sidebar,
+        )
+        self.sidebar_tagline.setObjectName("sidebarTagline")
+        self.sidebar_tagline.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.sidebar_tagline.setWordWrap(True)
+        self.sidebar_brand_divider = QFrame(self._sidebar)
+        self.sidebar_brand_divider.setObjectName("sidebarBrandDivider")
+        self.sidebar_brand_divider.setFrameShape(QFrame.Shape.NoFrame)
+        self.sidebar_brand_divider.setFixedHeight(
+            max(1, int(THEME.control_stroke_width))
+        )
         self.nav_compose_button = LicenseNavButton("Tạo giọng nói", self._sidebar)
         self.nav_compose_button.setObjectName("navComposeButton")
         self.nav_clone_button = LicenseNavButton("Nhân bản giọng", self._sidebar)
@@ -345,6 +370,20 @@ class MainWindow(QMainWindow):
         self.nav_payment_button.setObjectName("navPaymentButton")
         self.nav_contact_button = QPushButton("Liên hệ", self._sidebar)
         self.nav_contact_button.setObjectName("navContactButton")
+        self.sidebar_copyright_label = QLabel(
+            settings.application.copyright.strip(),
+            self._sidebar,
+        )
+        self.sidebar_copyright_label.setObjectName("sidebarCopyright")
+        self.sidebar_copyright_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.sidebar_copyright_label.setWordWrap(True)
+        self.sidebar_copyright_label.setStyleSheet(
+            f"color: {THEME.text_muted}; "
+            f"font-size: {max(THEME.font_size_caption - 2, 8)}px;"
+        )
+        self.sidebar_copyright_label.setVisible(
+            bool(settings.application.copyright.strip())
+        )
         for button in (
             self.nav_compose_button,
             self.nav_clone_button,
@@ -355,6 +394,11 @@ class MainWindow(QMainWindow):
             button.setCheckable(True)
             button.setProperty("nav", True)
         self.nav_compose_button.setChecked(True)
+        brand_layout = QVBoxLayout()
+        brand_layout.setContentsMargins(0, 0, 0, 0)
+        brand_layout.setSpacing(THEME.space_1)
+        brand_layout.addWidget(self.sidebar_brand)
+        brand_layout.addWidget(self.sidebar_tagline)
         sidebar_layout = QVBoxLayout(self._sidebar)
         sidebar_layout.setContentsMargins(
             THEME.space_3,
@@ -363,14 +407,17 @@ class MainWindow(QMainWindow):
             THEME.space_4,
         )
         sidebar_layout.setSpacing(THEME.space_2)
-        sidebar_layout.addWidget(self.sidebar_brand)
-        sidebar_layout.addSpacing(THEME.space_5)
+        sidebar_layout.addLayout(brand_layout)
+        sidebar_layout.addSpacing(THEME.space_3)
+        sidebar_layout.addWidget(self.sidebar_brand_divider)
+        sidebar_layout.addSpacing(THEME.space_2)
         sidebar_layout.addWidget(self.nav_compose_button)
         sidebar_layout.addWidget(self.nav_clone_button)
         sidebar_layout.addWidget(self.nav_settings_button)
         sidebar_layout.addWidget(self.nav_payment_button)
         sidebar_layout.addWidget(self.nav_contact_button)
         sidebar_layout.addStretch()
+        sidebar_layout.addWidget(self.sidebar_copyright_label)
 
         shell = QWidget(self)
         shell.setObjectName("applicationShell")
@@ -539,6 +586,7 @@ class MainWindow(QMainWindow):
         self.text_input.text_changed.connect(lambda _text: self._refresh_actions())
         self.text_input.open_file_requested.connect(self._choose_document)
         self.model_settings_page.load_requested.connect(self._view_model.load_model)
+        self.compose_help_button.clicked.connect(self._show_compose_help)
         self.synthesize_button.clicked.connect(self._request_synthesis)
         self.cancel_button.clicked.connect(self._view_model.cancel_current_task)
         self._view_model.voices_changed.connect(self._voices_changed)
@@ -561,6 +609,27 @@ class MainWindow(QMainWindow):
         self._playback.error_occurred.connect(self._show_playback_error)
         self._clone_playback.state_changed.connect(self._clone_playback_state_changed)
         self._clone_playback.error_occurred.connect(self._show_clone_playback_error)
+
+    def _show_compose_help(self) -> None:
+        """Show concise guidance for the complete speech-composition workflow."""
+
+        QMessageBox.information(
+            self,
+            "Hướng dẫn tạo giọng nói",
+            "1. Nhập hoặc dán nội dung vào ô văn bản. Bạn cũng có thể bấm "
+            "'Mở tệp' để lấy nội dung từ TXT, SRT, DOCX hoặc PDF có lớp văn bản.\n\n"
+            "2. Chọn giọng đọc. Danh sách gồm giọng dựng sẵn và các hồ sơ "
+            "đã tạo tại trang 'Nhân bản giọng'.\n\n"
+            "3. Chọn phong cách đọc, sau đó điều chỉnh tốc độ, cao độ và "
+            "âm lượng nếu cần. Bấm 'Đặt lại' để trở về giá trị mặc định.\n\n"
+            "4. Bấm 'Tạo giọng nói'. Trong lúc xử lý, bạn có thể bấm "
+            "'Dừng tác vụ' để hủy.\n\n"
+            "5. Khi hoàn tất, dùng nút phát/tạm dừng, nút dừng hoặc bấm và "
+            "kéo trên dải sóng để tua. Bấm 'Xuất WAV' hoặc 'Xuất MP3' để lưu.\n\n"
+            "Nếu model chưa sẵn sàng, vào trang 'Cài đặt', chọn Tự động, "
+            "GPU hoặc CPU rồi bấm 'Áp dụng'.",
+            QMessageBox.StandardButton.Ok,
+        )
 
     def _request_synthesis(self) -> None:
         if not self._check_license():

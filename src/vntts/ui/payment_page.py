@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QSizePolicy,
     QVBoxLayout,
@@ -70,6 +71,22 @@ class PaymentPage(QWidget):
 
         page_title = QLabel("Thanh toán / Bản quyền", self)
         page_title.setProperty("role", "title")
+        self.payment_help_button = QPushButton("Hướng dẫn", self)
+        self.payment_help_button.setObjectName("paymentHelpButton")
+        self.payment_help_button.setProperty("variant", "help")
+        self.payment_help_button.setAccessibleName(
+            "Mở hướng dẫn thanh toán và kích hoạt ứng dụng"
+        )
+        self.payment_help_button.setToolTip(
+            "Xem hướng dẫn thanh toán và nhập mã kích hoạt"
+        )
+        self.payment_help_button.setFixedHeight(30)
+        page_header = QHBoxLayout()
+        page_header.setContentsMargins(0, 0, 0, 0)
+        page_header.setSpacing(THEME.space_2)
+        page_header.addWidget(page_title)
+        page_header.addStretch()
+        page_header.addWidget(self.payment_help_button)
 
         self.payment_card = self._card()
         payment_layout = self._card_layout(self.payment_card)
@@ -244,7 +261,7 @@ class PaymentPage(QWidget):
             THEME.space_5,
         )
         layout.setSpacing(THEME.space_3)
-        layout.addWidget(page_title)
+        layout.addLayout(page_header)
         layout.addWidget(self._divider(self))
         layout.addLayout(content_row)
         layout.addStretch()
@@ -252,6 +269,31 @@ class PaymentPage(QWidget):
         self.plan_combo.currentIndexChanged.connect(self._update_plan_price)
         self.send_button.clicked.connect(self._submit_payment_request)
         self.activate_button.clicked.connect(self._activate_license)
+        self.payment_help_button.clicked.connect(self._show_payment_help)
+
+    def _show_payment_help(self) -> None:
+        """Explain payment submission and offline license activation."""
+
+        QMessageBox.information(
+            self,
+            "Hướng dẫn thanh toán và kích hoạt",
+            "Thanh toán\n"
+            "1. Chọn gói đang được hệ thống hỗ trợ.\n"
+            "2. Nhập đúng họ tên và email dùng để nhận hướng dẫn thanh toán.\n"
+            "3. Bấm 'Gửi yêu cầu thanh toán'.\n"
+            "4. Làm theo hướng dẫn được gửi đến email để hoàn tất thanh toán "
+            "và nhận mã kích hoạt.\n\n"
+            "Kích hoạt ứng dụng\n"
+            "1. Sao chép đầy đủ mã kích hoạt đã nhận.\n"
+            "2. Dán mã vào ô 'Mã kích hoạt' và bấm 'Kích hoạt'.\n"
+            "3. Khi xác thực thành công, kiểm tra thông tin gói, khách hàng "
+            "và ngày hết hạn. Trang 'Tạo giọng nói' và 'Nhân bản giọng' sẽ "
+            "được mở khóa.\n\n"
+            "Nếu mã báo hết hạn hoặc không hợp lệ, hãy kiểm tra lại mã và "
+            "liên hệ bộ phận hỗ trợ. Không thay đổi ngày giờ hệ "
+            "thống trong quá trình sử dụng license.",
+            QMessageBox.StandardButton.Ok,
+        )
 
     def apply_saved_license(self, result: LicenseActivationResult) -> None:
         """Reflect the startup license check without verifying it a second time."""

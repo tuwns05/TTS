@@ -11,6 +11,7 @@ from pathlib import Path
 import numpy as np
 from loguru import logger
 from PySide6.QtCore import QTimer
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
 from vntts.config.settings import Settings, load_settings
@@ -31,13 +32,37 @@ from vntts.ui.main_window import MainWindow
 from vntts.utils.logger import configure_logging, shutdown_logging
 
 
+def _application_icon_path() -> Path:
+    """Return the application icon path in source and frozen builds."""
+
+    bundle_root = Path(
+        getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[2])
+    )
+    return bundle_root / "resources" / "image" / "logo-GPHI.ico"
+
+
+def _set_windows_app_user_model_id() -> None:
+    """Keep the taskbar entry separate from the Python interpreter."""
+
+    if sys.platform != "win32":
+        return
+
+    import ctypes
+
+    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(  # type: ignore[attr-defined]
+        "GPHI.GPHI-TTS.Desktop"
+    )
+
+
 def build_application(argv: Sequence[str] | None = None) -> tuple[QApplication, MainWindow]:
     """Compose engine adapters lazily without loading models on the UI thread."""
 
     settings: Settings = load_settings()
     configure_logging(settings)
+    _set_windows_app_user_model_id()
     application = QApplication.instance() or QApplication(list(argv or sys.argv))
     application.setStyle("Fusion")
+    application.setWindowIcon(QIcon(str(_application_icon_path())))
     load_app_fonts()
     application.setApplicationName(settings.application.name)
     application.setFont(get_system_font())
@@ -91,6 +116,7 @@ def build_application(argv: Sequence[str] | None = None) -> tuple[QApplication, 
         ),
         license_service=LicenseService(settings.paths.data_dir),
     )
+    window.setWindowIcon(application.windowIcon())
 
     logger.info(
         "Ứng dụng khởi động",

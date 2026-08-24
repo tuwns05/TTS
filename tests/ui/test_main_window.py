@@ -138,6 +138,12 @@ def test_window_opens(qtbot, settings: Settings) -> None:  # type: ignore[no-unt
     assert window.windowTitle() == settings.application.name
     assert window.sidebar_brand.alignment() == Qt.AlignmentFlag.AlignCenter
     assert window.sidebar_brand.font().pixelSize() == THEME.font_size_section + 1
+    assert window.sidebar_tagline.text() == "Chuyển văn bản thành giọng nói"
+    assert window.sidebar_tagline.alignment() == Qt.AlignmentFlag.AlignCenter
+    assert window.sidebar_tagline.wordWrap()
+    assert window.sidebar_brand_divider.height() == max(
+        1, int(THEME.control_stroke_width)
+    )
     assert window.text_input.text() == DEFAULT_DEMO_TEXT
     assert window.text_input.character_count.text() == f"{len(DEFAULT_DEMO_TEXT)} ký tự"
     assert window.synthesize_button.text() == "Tạo giọng nói"
@@ -267,6 +273,39 @@ def test_compose_page_fits_standard_viewport_without_scrolling(
     assert window._scroll_area.verticalScrollBar().maximum() == 0
     assert window._scroll_area.horizontalScrollBar().maximum() == 0
     assert window._player_card.isVisible()
+
+
+def test_compose_and_payment_help_buttons_open_contextual_guides(
+    qtbot, settings: Settings, monkeypatch
+) -> None:  # type: ignore[no-untyped-def]
+    window, _ = _window(qtbot, settings)
+    opened_guides: list[tuple[str, str]] = []
+
+    def capture_guide(_parent, title, message, *_args, **_kwargs):  # type: ignore[no-untyped-def]
+        opened_guides.append((title, message))
+        return QMessageBox.StandardButton.Ok
+
+    monkeypatch.setattr(QMessageBox, "information", capture_guide)
+
+    assert window.compose_help_button.text() == "Hướng dẫn"
+    assert window.compose_help_button.property("variant") == "help"
+    assert window.compose_help_button.maximumHeight() <= 32
+    window.compose_help_button.click()
+
+    window.nav_payment_button.click()
+    assert window.payment_page.payment_help_button.text() == "Hướng dẫn"
+    assert window.payment_page.payment_help_button.property("variant") == "help"
+    assert window.payment_page.payment_help_button.maximumHeight() <= 32
+    window.payment_page.payment_help_button.click()
+
+    assert len(opened_guides) == 2
+    assert opened_guides[0][0] == "Hướng dẫn tạo giọng nói"
+    assert "Mở tệp" in opened_guides[0][1]
+    assert "Xuất WAV" in opened_guides[0][1]
+    assert opened_guides[1][0] == "Hướng dẫn thanh toán và kích hoạt"
+    assert "Gửi yêu cầu thanh toán" in opened_guides[1][1]
+    assert "Mã kích hoạt" in opened_guides[1][1]
+    assert "MAC" not in opened_guides[1][1]
 
 
 def test_voice_clone_selected_file_can_be_cleared(
@@ -867,6 +906,9 @@ def test_contact_page_displays_company_details(
     assert not window.nav_settings_button.isChecked()
     assert not window.nav_payment_button.isChecked()
     assert window.contact_page.card.maximumWidth() == THEME.content_reading_width
+    company_logo = window.contact_page.findChild(QLabel, "contactCompanyIcon")
+    assert company_logo is not None
+    assert not company_logo.pixmap().isNull()
     assert (
         abs(
             window.contact_page.card.geometry().center().x()
@@ -882,11 +924,21 @@ def test_contact_page_displays_company_details(
         "Lô 17, Khu nhà liền kề Chung cư Simona, đường Hoàng Văn Thụ, "
         "Phường Quy Nhơn Nam, Tỉnh Gia Lai"
     )
-    assert window.contact_page.phone_label.text() == "Chưa cập nhật"
-    assert window.contact_page.email_label.text() == "Chưa cập nhật"
-    assert window.contact_page.website_label.text() == "Chưa cập nhật"
-    assert window.contact_page.support_email_label.text() == "Chưa cập nhật"
+    assert settings.application.phone in window.contact_page.phone_label.text()
+    assert (
+        settings.application.support_email
+        in window.contact_page.email_label.text()
+    )
+    assert settings.application.website in window.contact_page.website_label.text()
+    assert (
+        settings.application.support_email
+        in window.contact_page.support_email_label.text()
+    )
     assert not window.contact_page.license_link_label.isVisible()
+    assert (
+        window.sidebar_copyright_label.text()
+        == settings.application.copyright
+    )
     assert not window.contact_page.license_link_label.openExternalLinks()
     assert window.contact_page.license_link_label.text() == (
         "Phần mềm này sử dụng Qt/PySide6 và các thành phần "
@@ -927,6 +979,10 @@ def test_contact_page_displays_company_details(
     assert window.contact_page.phone_label.openExternalLinks()
     assert window.contact_page.email_label.openExternalLinks()
     assert window.contact_page.website_label.openExternalLinks()
+    assert (
+        window.sidebar_copyright_label.text()
+        == settings.application.copyright
+    )
 
 
 def test_style_selection_is_independent_from_voice(

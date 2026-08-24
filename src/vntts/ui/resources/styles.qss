@@ -170,6 +170,28 @@ QPushButton:disabled {
     border-color: #E5E7EB;
 }
 
+QPushButton[variant="help"] {
+    min-width: 76px;
+    min-height: 28px;
+    max-height: 28px;
+    padding: 0 8px;
+    color: #1D4ED8;
+    background: #EAF2FF;
+    border-color: #3B82F6;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+QPushButton[variant="help"]:hover {
+    color: #FFFFFF;
+    background: #3B82F6;
+}
+
+QPushButton[variant="help"]:pressed {
+    color: #FFFFFF;
+    background: #1D4ED8;
+}
+
 QPushButton#synthesizeButton {
     color: #FFFFFF;
     background: #3B82F6;

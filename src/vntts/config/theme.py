@@ -165,8 +165,15 @@ def build_stylesheet(t: Theme = THEME) -> str:
         font-weight: 600;
     }}
     QLabel#sidebarBrand {{
+        color: {t.text_primary};
         font-size: {t.font_size_section + 1}px;
         font-weight: 700;
+        letter-spacing: 0.5px;
+    }}
+    QLabel#sidebarTagline {{
+        color: {t.text_muted};
+        font-size: {max(t.font_size_caption - 1, 8)}px;
+        font-weight: 400;
     }}
     QLabel#activeModelTitle {{
         color: {t.success};
@@ -185,6 +192,10 @@ def build_stylesheet(t: Theme = THEME) -> str:
     QFrame#sidebar {{
         background: {t.panel_bg};
         border-right: 1px solid {t.border};
+    }}
+    QFrame#sidebarBrandDivider {{
+        background: {t.border};
+        border: none;
     }}
     QPushButton[nav="true"] {{
         text-align: left;
@@ -341,6 +352,25 @@ def build_stylesheet(t: Theme = THEME) -> str:
     QPushButton[variant="ghost"]:hover {{
         background: {t.error_soft};
         color: {t.error};
+    }}
+    QPushButton[variant="help"] {{
+        min-width: 76px;
+        min-height: 28px;
+        max-height: 28px;
+        padding: 0 {t.space_2}px;
+        color: {t.accent_pressed};
+        background: {t.accent_soft};
+        border: 1px solid {t.accent};
+        font-size: {t.font_size_caption}px;
+        font-weight: 600;
+    }}
+    QPushButton[variant="help"]:hover {{
+        color: {t.text_on_accent};
+        background: {t.accent};
+    }}
+    QPushButton[variant="help"]:pressed {{
+        color: {t.text_on_accent};
+        background: {t.accent_pressed};
     }}
     QPushButton#resetVoiceStyleButton {{
         background: {t.content_bg};

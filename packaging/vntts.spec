@@ -14,6 +14,8 @@ project_root = Path(SPECPATH).resolve().parent
 source_root = project_root / "src"
 model_root = project_root / "resources" / "models" / "vieneu-v3"
 licenses_root = project_root / "packaging" / "licenses"
+app_icon = project_root / "resources" / "image" / "logo-GPHI.ico"
+company_logo = project_root / "resources" / "image" / "logo-GPHI.webp"
 
 if not (model_root / "manifest.json").is_file():
     raise SystemExit("Thiếu bundle model. Chạy scripts/prepare_vieneu_v3.py trước.")
@@ -22,6 +24,8 @@ datas = [
     (str(source_root / "vntts" / "config" / "default.yaml"), "vntts/config"),
     (str(source_root / "vntts" / "ui" / "resources" / "styles.qss"), "vntts/ui/resources"),
     (str(model_root), "resources/models/vieneu-v3"),
+    (str(app_icon), "resources/image"),
+    (str(company_logo), "resources/image"),
     (str(licenses_root), "licenses"),
 ]
 datas += collect_data_files("vieneu")
@@ -84,6 +88,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon=str(app_icon),
 )
 
 coll = COLLECT(

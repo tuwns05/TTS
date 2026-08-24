@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import html
+import sys
+from pathlib import Path
 from urllib.parse import quote
 
 from PySide6.QtCore import QLineF, QRectF, Qt
@@ -19,6 +21,15 @@ from PySide6.QtWidgets import (
 )
 
 from vntts.config.theme import THEME
+
+
+def _company_logo_path() -> Path:
+    """Return the company logo path in source and frozen builds."""
+
+    bundle_root = Path(
+        getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[3])
+    )
+    return bundle_root / "resources" / "image" / "logo-GPHI.webp"
 
 
 class ContactPage(QWidget):
@@ -41,11 +52,7 @@ class ContactPage(QWidget):
             QSizePolicy.Policy.Preferred,
         )
 
-        company_icon = self._icon_label(
-            "building",
-            THEME.space_6 + THEME.space_4,
-            THEME.space_6,
-        )
+        company_icon = self._company_logo_label()
         company_icon.setObjectName("contactCompanyIcon")
         self.company_name_label = QLabel("Chưa cập nhật", self.card)
         self.company_name_label.setObjectName("contactCompanyName")
@@ -251,6 +258,24 @@ class ContactPage(QWidget):
             f"border-radius: {container_size // 2}px;"
         )
         label.setPixmap(self._draw_icon(icon, icon_size))
+        return label
+
+    def _company_logo_label(self) -> QLabel:
+        size = THEME.space_6 + THEME.space_4
+        label = QLabel(self.card)
+        label.setFixedSize(size, size)
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        logo = QPixmap(str(_company_logo_path()))
+        if logo.isNull():
+            return self._icon_label("building", size, THEME.space_6)
+        label.setPixmap(
+            logo.scaled(
+                size,
+                size,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+        )
         return label
 
     @staticmethod
