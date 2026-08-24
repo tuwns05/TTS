@@ -10,9 +10,6 @@ from dataclasses import dataclass
 from vntts.utils.exceptions import PaymentServiceError
 
 PAYMENT_REQUEST_PATH = "/payment/request"
-# Temporary contract for the local test API. Remove ``price`` from
-# PaymentRequest/to_payload when the production server owns plan pricing.
-LOCAL_TEST_PRICE_VND = 1_990_000
 PAYMENT_SUCCESS_MESSAGE = (
     "Yêu cầu thanh toán đã được gửi.\n"
     "Vui lòng kiểm tra email để nhận hướng dẫn thanh toán."
@@ -26,8 +23,8 @@ class PaymentRequest:
     name: str
     email: str
     plan: str
+    price: int
     mac: str
-    price: int = LOCAL_TEST_PRICE_VND
 
     def to_payload(self) -> dict[str, str | int]:
         """Return the JSON-compatible server payload."""

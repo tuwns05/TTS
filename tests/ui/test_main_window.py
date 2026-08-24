@@ -840,6 +840,18 @@ def test_payment_page_validates_and_uses_separate_services(
     page.send_button.click()
     assert page.payment_status_label.text() == "Vui lòng chọn gói thanh toán."
 
+    for plan, price in {
+        "monthly": 99_000,
+        "quarterly": 249_000,
+        "semiannual": 449_000,
+        "yearly": 799_000,
+        "lifetime": 1_999_000,
+    }.items():
+        page.plan_combo.setCurrentIndex(page.plan_combo.findData(plan))
+        payment = page._validated_payment_request()
+        assert payment.plan == plan
+        assert payment.price == price
+
     page.plan_combo.setCurrentIndex(page.plan_combo.findData("monthly"))
     assert page.plan_price_label.text() == "Giá gói: 99.000 VNĐ"
     page.send_button.click()
@@ -857,7 +869,7 @@ def test_payment_page_validates_and_uses_separate_services(
         "name": "Nguyễn Văn A",
         "email": "example@gmail.com",
         "plan": "monthly",
-        "price": 1_990_000,
+        "price": 99_000,
         "mac": payment_service.requests[0].mac,
     }
     assert len(payment_service.requests[0].mac.split(":")) == 6

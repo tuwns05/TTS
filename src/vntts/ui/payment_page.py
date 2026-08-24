@@ -404,12 +404,13 @@ class PaymentPage(QWidget):
             raise ValidationError("Vui lòng nhập email.")
         if not _EMAIL_PATTERN.fullmatch(email):
             raise ValidationError("Email không đúng định dạng.")
-        if plan not in {"monthly", "yearly"}:
+        if plan not in _PLAN_LABELS:
             raise ValidationError("Vui lòng chọn gói thanh toán.")
         return PaymentRequest(
             name=name,
             email=email,
             plan=str(plan),
+            price=self._plan_prices_vnd[str(plan)],
             mac=self._mac_address,
         )
 

@@ -17,6 +17,7 @@ def payment_request() -> PaymentRequest:
         name="Nguyễn Văn A",
         email="example@gmail.com",
         plan="monthly",
+        price=99_000,
         mac="A1:B2:C3:D4:E5:F6",
     )
 
@@ -36,7 +37,7 @@ def test_mock_payment_service_returns_success_without_network(
         "name": "Nguyễn Văn A",
         "email": "example@gmail.com",
         "plan": "monthly",
-        "price": 1_990_000,
+        "price": 99_000,
         "mac": "A1:B2:C3:D4:E5:F6",
     }
 
