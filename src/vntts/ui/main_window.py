@@ -1,9 +1,8 @@
 """Desktop workspace for the Vietnamese text-to-speech workflow."""
 
-from PySide6.QtCore import QRectF, Qt, QTimer
+from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import QCloseEvent, QColor, QPainter, QPaintEvent, QPen, QResizeEvent
 from PySide6.QtWidgets import (
-    QApplication,
     QBoxLayout,
     QFileDialog,
     QFrame,
@@ -14,8 +13,6 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QStackedWidget,
-    QStyle,
-    QSystemTrayIcon,
     QVBoxLayout,
     QWidget,
 )
@@ -119,8 +116,7 @@ class MainWindow(QMainWindow):
             settings.paths.data_dir
         )
         self._license_valid = False
-        self._license_tray_icon: QSystemTrayIcon | None = None
-        self._startup_license_message: str | None = None
+        self._license_popup: QMessageBox | None = None
         self._engine_voices: list[VoiceInfo] = []
         self._cloned_voice_artifacts: dict[str, str] = {}
         self._clone_enrollment_pending = False
@@ -433,7 +429,6 @@ class MainWindow(QMainWindow):
         self.payment_page.apply_saved_license(startup_license)
         self._apply_license_state(startup_license)
         if not startup_license.activated:
-            self._startup_license_message = startup_license.message
             self._show_page(3, enforce_license=False)
         self._apply_responsive_layout(self.width() - THEME.sidebar_width)
         self.model_settings_page.set_models(
@@ -458,13 +453,6 @@ class MainWindow(QMainWindow):
         """Start slow startup work after the window has been shown."""
 
         self._view_model.initialize()
-        if self._startup_license_message:
-            QTimer.singleShot(
-                0,
-                lambda: self._show_license_notification(
-                    self._startup_license_message or ""
-                ),
-            )
 
     @property
     def responsive_mode(self) -> str:
@@ -737,9 +725,6 @@ class MainWindow(QMainWindow):
         self.nav_contact_button.setChecked(index == 4)
 
     def _license_activated(self, result: LicenseActivationResult) -> None:
-        self._startup_license_message = None
-        if self._license_tray_icon is not None:
-            self._license_tray_icon.hide()
         self._apply_license_state(result)
 
     def _check_license(self) -> bool:
@@ -749,35 +734,41 @@ class MainWindow(QMainWindow):
             return True
         self.payment_page.apply_saved_license(result)
         self._show_page(3, enforce_license=False)
-        self._show_license_notification(result.message)
+        self._show_license_popup(result.message)
         return False
 
     def _apply_license_state(self, result: LicenseActivationResult) -> None:
         self._license_valid = result.activated
+        if result.activated and self._license_popup is not None:
+            self._license_popup.close()
         self.nav_compose_button.set_license_locked(not result.activated)
         self.nav_clone_button.set_license_locked(not result.activated)
         self._refresh_actions()
 
-    def _show_license_notification(self, message: str) -> None:
-        if not message or not QSystemTrayIcon.isSystemTrayAvailable():
+    def _show_license_popup(self, message: str) -> None:
+        normalized = message.strip()
+        if not normalized:
             return
-        if self._license_tray_icon is None:
-            icon = self.windowIcon()
-            if icon.isNull():
-                application = QApplication.instance()
-                if application is not None:
-                    icon = application.style().standardIcon(
-                        QStyle.StandardPixmap.SP_MessageBoxWarning
-                    )
-            self._license_tray_icon = QSystemTrayIcon(icon, self)
-            self._license_tray_icon.setToolTip(self.windowTitle())
-        self._license_tray_icon.show()
-        self._license_tray_icon.showMessage(
+        if self._license_popup is not None:
+            self._license_popup.raise_()
+            self._license_popup.activateWindow()
+            return
+        popup = QMessageBox(
+            QMessageBox.Icon.Warning,
             "GPHI TTS · Bản quyền",
-            message,
-            QSystemTrayIcon.MessageIcon.Warning,
-            6_000,
+            "Vui lòng nhập mã kích hoạt ứng dụng.\n"
+            "Vui lòng kích hoạt mã ở trang Thanh toán.",
+            QMessageBox.StandardButton.Ok,
+            self,
         )
+        popup.setObjectName("licenseWarningPopup")
+        popup.setWindowModality(Qt.WindowModality.WindowModal)
+        popup.finished.connect(self._license_popup_finished)
+        self._license_popup = popup
+        popup.open()
+
+    def _license_popup_finished(self, _result: int) -> None:
+        self._license_popup = None
 
     def _runtime_changed(self, runtime: object) -> None:
         self.active_model_card.set_runtime(runtime)
@@ -971,8 +962,8 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event: QCloseEvent) -> None:
         """Release worker and engine resources before closing."""
 
-        if self._license_tray_icon is not None:
-            self._license_tray_icon.hide()
+        if self._license_popup is not None:
+            self._license_popup.close()
         self._clone_playback.shutdown()
         self._playback.shutdown()
         self._view_model.shutdown()

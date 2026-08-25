@@ -172,9 +172,6 @@ def test_unlicensed_startup_locks_feature_pages_and_redirects_to_payment(
         settings,
         license_service=UnlicensedService(),  # type: ignore[arg-type]
     )
-    notifications: list[str] = []
-    monkeypatch.setattr(window, "_show_license_notification", notifications.append)
-
     assert window.page_stack.currentIndex() == 3
     assert window.nav_compose_button.license_locked
     assert window.nav_clone_button.license_locked
@@ -185,7 +182,29 @@ def test_unlicensed_startup_locks_feature_pages_and_redirects_to_payment(
     window.nav_clone_button.click()
 
     assert window.page_stack.currentIndex() == 3
-    assert notifications == [LICENSE_REQUIRED_MESSAGE]
+    popup = window._license_popup
+    assert popup is not None
+    assert popup.objectName() == "licenseWarningPopup"
+    assert popup.text() == (
+        "Vui lòng nhập mã kích hoạt ứng dụng.\n"
+        "Vui lòng kích hoạt mã ở trang Thanh toán."
+    )
+
+    window.nav_compose_button.click()
+
+    assert window._license_popup is popup
+    popup.accept()
+    qtbot.waitUntil(lambda: window._license_popup is None)
+
+    window.nav_clone_button.click()
+
+    second_popup = window._license_popup
+    assert second_popup is not None
+    assert second_popup is not popup
+
+    window.nav_compose_button.click()
+
+    assert window._license_popup is second_popup
 
 
 def test_license_expiring_while_open_blocks_next_synthesis(
