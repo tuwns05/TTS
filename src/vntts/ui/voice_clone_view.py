@@ -58,6 +58,22 @@ class VoiceClonePage(QWidget):
 
         title = QLabel("Nhân bản giọng nói", self)
         title.setProperty("role", "title")
+        self.voice_clone_help_button = QPushButton("Hướng dẫn", self)
+        self.voice_clone_help_button.setObjectName("voiceCloneHelpButton")
+        self.voice_clone_help_button.setProperty("variant", "help")
+        self.voice_clone_help_button.setAccessibleName(
+            "Mở hướng dẫn nhân bản giọng nói"
+        )
+        self.voice_clone_help_button.setToolTip(
+            "Xem hướng dẫn chuẩn bị mẫu và tạo hồ sơ giọng"
+        )
+        self.voice_clone_help_button.setFixedHeight(30)
+        page_header = QHBoxLayout()
+        page_header.setContentsMargins(0, 0, 0, 0)
+        page_header.setSpacing(THEME.space_2)
+        page_header.addWidget(title)
+        page_header.addStretch()
+        page_header.addWidget(self.voice_clone_help_button)
         description = QLabel(
             "Tạo hồ sơ giọng từ một đoạn ghi âm ngắn. Mẫu âm thanh chỉ dùng để "
             "trích xuất đặc trưng giọng và không được lưu lại.",
@@ -247,7 +263,7 @@ class VoiceClonePage(QWidget):
             THEME.space_5, THEME.space_5, THEME.space_5, THEME.space_5
         )
         self._page_layout.setSpacing(THEME.space_4)
-        self._page_layout.addWidget(title)
+        self._page_layout.addLayout(page_header)
         self._page_layout.addWidget(description)
         self._page_layout.addWidget(form)
         self._page_layout.addSpacing(THEME.space_2)
@@ -257,9 +273,28 @@ class VoiceClonePage(QWidget):
         self.upload_button.clicked.connect(self._choose_audio)
         self.clear_audio_button.clicked.connect(self._clear_selected_audio)
         self.create_button.clicked.connect(self._create_profile)
+        self.voice_clone_help_button.clicked.connect(self._show_voice_clone_help)
         self.profile_list.currentItemChanged.connect(self._selection_changed)
         self.name_input.textChanged.connect(self._refresh_create_button)
         self._reload_profiles()
+
+    def _show_voice_clone_help(self) -> None:
+        """Explain how to prepare audio and create a reusable voice profile."""
+
+        QMessageBox.information(
+            self,
+            "Hướng dẫn nhân bản giọng nói",
+            "1. Nhập tên dễ nhận biết cho hồ sơ giọng.\n"
+            "2. Chọn file WAV, MP3 hoặc FLAC có một người nói rõ ràng.\n"
+            "3. Nên dùng đoạn ghi âm dài 6–8 giây, không có nhạc nền, tiếng vọng "
+            "hoặc tạp âm lớn.\n"
+            "4. Bấm 'Tạo hồ sơ giọng' và chờ xử lý hoàn tất.\n"
+            "5. Dùng nút 'Nghe thử' để kiểm tra hoặc chọn hồ sơ tại trang "
+            "Tạo giọng nói.\n\n"
+            "Ứng dụng chỉ lưu đặc trưng giọng đã trích xuất; file âm thanh gốc "
+            "không được sao chép vào hồ sơ.",
+            QMessageBox.StandardButton.Ok,
+        )
 
     @property
     def profiles(self) -> list[VoiceProfile]:

@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QMessageBox,
     QPushButton,
     QSizePolicy,
     QSlider,
@@ -92,6 +93,22 @@ class ModelSettingsPage(QWidget):
         self.setObjectName("modelSettingsPage")
         title = QLabel("Cài đặt thiết bị", self)
         title.setProperty("role", "title")
+        self.settings_help_button = QPushButton("Hướng dẫn", self)
+        self.settings_help_button.setObjectName("settingsHelpButton")
+        self.settings_help_button.setProperty("variant", "help")
+        self.settings_help_button.setAccessibleName(
+            "Mở hướng dẫn cài đặt thiết bị xử lý"
+        )
+        self.settings_help_button.setToolTip(
+            "Xem hướng dẫn chọn CPU, GPU hoặc chế độ tự động"
+        )
+        self.settings_help_button.setFixedHeight(30)
+        page_header = QHBoxLayout()
+        page_header.setContentsMargins(0, 0, 0, 0)
+        page_header.setSpacing(THEME.space_2)
+        page_header.addWidget(title)
+        page_header.addStretch()
+        page_header.addWidget(self.settings_help_button)
         intro = QLabel(
             "Chọn thiết bị xử lý dùng để tạo giọng nói. "
             "Khi đổi thiết bị, hệ thống sẽ áp dụng lại cấu hình.",
@@ -122,6 +139,7 @@ class ModelSettingsPage(QWidget):
         self.load_button.setProperty("variant", "primary")
         self.load_button.setEnabled(False)
         self.load_button.clicked.connect(self._emit_load)
+        self.settings_help_button.clicked.connect(self._show_settings_help)
         self._selected_engine_id: str | None = None
         self._hardware_ready = False
         self._loading = False
@@ -140,10 +158,27 @@ class ModelSettingsPage(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(THEME.space_5, THEME.space_4, THEME.space_5, THEME.space_5)
         layout.setSpacing(THEME.space_3)
-        layout.addWidget(title)
+        layout.addLayout(page_header)
         layout.addWidget(intro)
         layout.addWidget(card)
         layout.addStretch()
+
+    def _show_settings_help(self) -> None:
+        """Explain device selection and when the model is reloaded."""
+
+        QMessageBox.information(
+            self,
+            "Hướng dẫn cài đặt thiết bị",
+            "1. Chọn 'Tự động' để ứng dụng tự quyết định CPU hoặc GPU theo phần "
+            "cứng đang có. Đây là lựa chọn khuyến nghị.\n"
+            "2. Chọn 'GPU NVIDIA' để ưu tiên tốc độ khi máy có CUDA và đủ VRAM.\n"
+            "3. Chọn 'CPU' khi không có GPU tương thích hoặc muốn giảm mức sử "
+            "dụng VRAM.\n"
+            "4. Bấm 'Áp dụng' để nạp lại model trên thiết bị đã chọn. Quá trình "
+            "này có thể mất một lúc.\n\n"
+            "Chỉ có thể mở Cài đặt và nạp model sau khi mã kích hoạt hợp lệ.",
+            QMessageBox.StandardButton.Ok,
+        )
 
     def set_models(self, models: list[EngineInfo], selected_id: str | None) -> None:
         engine_ids = [model.engine_id for model in models]

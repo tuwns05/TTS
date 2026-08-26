@@ -294,7 +294,7 @@ def test_compose_page_fits_standard_viewport_without_scrolling(
     assert window._player_card.isVisible()
 
 
-def test_compose_and_payment_help_buttons_open_contextual_guides(
+def test_contextual_help_buttons_open_guides(
     qtbot, settings: Settings, monkeypatch
 ) -> None:  # type: ignore[no-untyped-def]
     window, _ = _window(qtbot, settings)
@@ -311,20 +311,40 @@ def test_compose_and_payment_help_buttons_open_contextual_guides(
     assert window.compose_help_button.maximumHeight() <= 32
     window.compose_help_button.click()
 
+    window.nav_clone_button.click()
+    clone_help = window.voice_clone_page.voice_clone_help_button
+    assert clone_help.text() == "Hướng dẫn"
+    assert clone_help.property("variant") == "help"
+    assert clone_help.maximumHeight() <= 32
+    clone_help.click()
+
+    window.nav_settings_button.click()
+    settings_help = window.model_settings_page.settings_help_button
+    assert settings_help.text() == "Hướng dẫn"
+    assert settings_help.property("variant") == "help"
+    assert settings_help.maximumHeight() <= 32
+    settings_help.click()
+
     window.nav_payment_button.click()
     assert window.payment_page.payment_help_button.text() == "Hướng dẫn"
     assert window.payment_page.payment_help_button.property("variant") == "help"
     assert window.payment_page.payment_help_button.maximumHeight() <= 32
     window.payment_page.payment_help_button.click()
 
-    assert len(opened_guides) == 2
+    assert len(opened_guides) == 4
     assert opened_guides[0][0] == "Hướng dẫn tạo giọng nói"
     assert "Mở tệp" in opened_guides[0][1]
     assert "Xuất WAV" in opened_guides[0][1]
-    assert opened_guides[1][0] == "Hướng dẫn thanh toán và kích hoạt"
-    assert "Gửi yêu cầu thanh toán" in opened_guides[1][1]
-    assert "Mã kích hoạt" in opened_guides[1][1]
-    assert "MAC" not in opened_guides[1][1]
+    assert opened_guides[1][0] == "Hướng dẫn nhân bản giọng nói"
+    assert "6–8 giây" in opened_guides[1][1]
+    assert "Tạo hồ sơ giọng" in opened_guides[1][1]
+    assert opened_guides[2][0] == "Hướng dẫn cài đặt thiết bị"
+    assert "Tự động" in opened_guides[2][1]
+    assert "Áp dụng" in opened_guides[2][1]
+    assert opened_guides[3][0] == "Hướng dẫn thanh toán và kích hoạt"
+    assert "Gửi yêu cầu thanh toán" in opened_guides[3][1]
+    assert "Mã kích hoạt" in opened_guides[3][1]
+    assert "MAC" not in opened_guides[3][1]
 
 
 def test_voice_clone_selected_file_can_be_cleared(

@@ -18,7 +18,9 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from vntts.utils.exceptions import ValidationError
 from vntts.utils.machine_info import get_mac_address
 
-TEST_LICENSE_PUBLIC_KEY = "7rilDXbtvJC6LrnECzoc6DECh8S63hYO_xAOs3JDsD0"
+# Development-only key pair.  This public key matches the private seed used
+# by the test fixtures to sign sample licenses.
+TEST_LICENSE_PUBLIC_KEY = "KpKH0Ng-3UJLEbEktxTBcWn4p_V1smDJ5K5kkhbbf4A"
 CLOCK_ROLLBACK_MESSAGE = (
     "Phát hiện thời gian hệ thống không hợp lệ. "
     "Vui lòng kiểm tra lại ngày giờ của thiết bị."

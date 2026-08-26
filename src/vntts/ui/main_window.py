@@ -360,7 +360,7 @@ class MainWindow(QMainWindow):
         self.nav_compose_button.setObjectName("navComposeButton")
         self.nav_clone_button = LicenseNavButton("Nhân bản giọng", self._sidebar)
         self.nav_clone_button.setObjectName("navCloneButton")
-        self.nav_settings_button = QPushButton("Cài đặt", self._sidebar)
+        self.nav_settings_button = LicenseNavButton("Cài đặt", self._sidebar)
         self.nav_settings_button.setObjectName("navSettingsButton")
         self.nav_payment_button = QPushButton("Thanh toán", self._sidebar)
         self.nav_payment_button.setObjectName("navPaymentButton")
@@ -428,7 +428,11 @@ class MainWindow(QMainWindow):
         startup_license = self._license_service.validate_saved()
         self.payment_page.apply_saved_license(startup_license)
         self._apply_license_state(startup_license)
-        if not startup_license.activated:
+        if startup_license.activated:
+            # A saved, currently valid license allows the model to be loaded
+            # automatically on subsequent launches.
+            self.start_initialization()
+        else:
             self._show_page(3, enforce_license=False)
         self._apply_responsive_layout(self.width() - THEME.sidebar_width)
         self.model_settings_page.set_models(
@@ -452,6 +456,11 @@ class MainWindow(QMainWindow):
     def start_initialization(self) -> None:
         """Start slow startup work after the window has been shown."""
 
+        # Model loading is a licensed operation.  Keep this guard here (in
+        # addition to the startup check) because main.py invokes this method
+        # after the window is shown and it must be safe to call unconditionally.
+        if not self._license_valid:
+            return
         self._view_model.initialize()
 
     @property
@@ -563,7 +572,9 @@ class MainWindow(QMainWindow):
         self.nav_clone_button.clicked.connect(
             lambda: self._open_licensed_page(1)
         )
-        self.nav_settings_button.clicked.connect(lambda: self._show_page(2))
+        self.nav_settings_button.clicked.connect(
+            lambda: self._open_licensed_page(2)
+        )
         self.nav_payment_button.clicked.connect(lambda: self._show_page(3))
         self.nav_contact_button.clicked.connect(lambda: self._show_page(4))
         self.payment_page.license_activated.connect(self._license_activated)
@@ -573,7 +584,7 @@ class MainWindow(QMainWindow):
         self.voice_clone_page.stop_preview_requested.connect(self._clone_playback.stop)
         self.text_input.text_changed.connect(lambda _text: self._refresh_actions())
         self.text_input.open_file_requested.connect(self._choose_document)
-        self.model_settings_page.load_requested.connect(self._view_model.load_model)
+        self.model_settings_page.load_requested.connect(self._load_model_if_licensed)
         self.compose_help_button.clicked.connect(self._show_compose_help)
         self.synthesize_button.clicked.connect(self._request_synthesis)
         self.cancel_button.clicked.connect(self._view_model.cancel_current_task)
@@ -707,7 +718,7 @@ class MainWindow(QMainWindow):
             self._show_page(index, enforce_license=False)
 
     def _show_page(self, index: int, *, enforce_license: bool = True) -> None:
-        if enforce_license and index in {0, 1} and not self._check_license():
+        if enforce_license and index in {0, 1, 2} and not self._check_license():
             return
         if index == 0:
             if self._clone_preview_pending:
@@ -726,6 +737,16 @@ class MainWindow(QMainWindow):
 
     def _license_activated(self, result: LicenseActivationResult) -> None:
         self._apply_license_state(result)
+        if result.activated:
+            # The first successful activation is the other entry point into
+            # startup: unlock the protected pages and begin loading the model.
+            self.start_initialization()
+
+    def _load_model_if_licensed(self, engine_id: str, device: str) -> None:
+        """Prevent manual model loads until a valid license is present."""
+
+        if self._check_license():
+            self._view_model.load_model(engine_id, device)
 
     def _check_license(self) -> bool:
         result = self._license_service.validate_saved()
@@ -743,6 +764,7 @@ class MainWindow(QMainWindow):
             self._license_popup.close()
         self.nav_compose_button.set_license_locked(not result.activated)
         self.nav_clone_button.set_license_locked(not result.activated)
+        self.nav_settings_button.set_license_locked(not result.activated)
         self._refresh_actions()
 
     def _show_license_popup(self, message: str) -> None:
