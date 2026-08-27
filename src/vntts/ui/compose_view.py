@@ -43,7 +43,6 @@ from vntts.ui.controls import ChevronComboBox
 from vntts.utils.exceptions import AppError, ValidationError
 from vntts.utils.worker import TaskWorker
 
-
 DEFAULT_DEMO_TEXT = (
     "Chào mừng bạn đến với GPHI TTS, ứng dụng chuyển văn bản tiếng Việt "
     "thành giọng nói ngay trên máy tính. "
@@ -170,6 +169,7 @@ class MainViewModel(QObject):
 
         self._startup_requested = True
         if self._hardware is None:
+            self._set_state("loading_engine")
             self._start_hardware_detection()
             return
         if self._startup_completed:
@@ -214,6 +214,7 @@ class MainViewModel(QObject):
             return
         if self._hardware is None:
             self._pending_load_request = (engine_id, device)
+            self._set_state("loading_engine")
             self._start_hardware_detection()
             return
         if device == "cuda" and self._hardware is not None and not self._hardware.cuda_available:
@@ -367,6 +368,7 @@ class MainViewModel(QObject):
         self._hardware_detection_started = True
         worker = TaskWorker(self._hardware_detector)
         worker.signals.result.connect(self._hardware_ready)
+        worker.signals.error.connect(self._fail)
         self._active_workers.add(worker)
         worker.signals.finished.connect(
             lambda current=worker: self._worker_finished(current)

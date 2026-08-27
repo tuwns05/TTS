@@ -4,12 +4,14 @@ from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import QCloseEvent, QColor, QPainter, QPaintEvent, QPen, QResizeEvent
 from PySide6.QtWidgets import (
     QBoxLayout,
+    QDialog,
     QFileDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
     QMainWindow,
     QMessageBox,
+    QProgressBar,
     QPushButton,
     QScrollArea,
     QStackedWidget,
@@ -88,6 +90,73 @@ class LicenseNavButton(QPushButton):
         painter.drawRoundedRect(QRectF(x + 1, y + 6, 12, 9), 2, 2)
 
 
+class ModelLoadingDialog(QDialog):
+    """Block the application while the speech model is being prepared."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._allow_close = False
+        self.setObjectName("modelLoadingPopup")
+        self.setWindowTitle("GPHI TTS · Đang chuẩn bị")
+        self.setWindowModality(Qt.WindowModality.WindowModal)
+        self.setModal(True)
+        self.setWindowFlag(Qt.WindowType.WindowCloseButtonHint, False)
+        self.setWindowFlag(Qt.WindowType.WindowContextHelpButtonHint, False)
+        self.setMinimumWidth(420)
+        self.setMaximumWidth(520)
+        self.setSizeGripEnabled(False)
+        self.setAccessibleName("Ứng dụng đang chuẩn bị")
+
+        self.title_label = QLabel("Ứng dụng đang chuẩn bị", self)
+        self.title_label.setObjectName("modelLoadingTitle")
+        self.title_label.setProperty("role", "section")
+
+        self.message_label = QLabel(
+            "Model giọng nói đang được tải. Vui lòng chờ trong giây lát; "
+            "ứng dụng sẽ tự động sẵn sàng khi hoàn tất.",
+            self,
+        )
+        self.message_label.setObjectName("modelLoadingMessage")
+        self.message_label.setProperty("role", "secondary")
+        self.message_label.setWordWrap(True)
+
+        self.progress_bar = QProgressBar(self)
+        self.progress_bar.setObjectName("modelLoadingProgress")
+        self.progress_bar.setRange(0, 0)
+        self.progress_bar.setTextVisible(False)
+        self.progress_bar.setAccessibleName("Đang tải model giọng nói")
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(
+            THEME.space_5,
+            THEME.space_5,
+            THEME.space_5,
+            THEME.space_5,
+        )
+        layout.setSpacing(THEME.space_3)
+        layout.addWidget(self.title_label)
+        layout.addWidget(self.message_label)
+        layout.addWidget(self.progress_bar)
+
+    def complete(self) -> None:
+        """Close the dialog only when model preparation has ended."""
+
+        self._allow_close = True
+        self.accept()
+
+    def reject(self) -> None:
+        """Ignore Escape and other user-initiated dismissal attempts."""
+
+        if self._allow_close:
+            super().reject()
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        if self._allow_close:
+            super().closeEvent(event)
+            return
+        event.ignore()
+
+
 class MainWindow(QMainWindow):
     """Compose widgets and reflect state emitted by MainViewModel."""
 
@@ -117,6 +186,7 @@ class MainWindow(QMainWindow):
         )
         self._license_valid = False
         self._license_popup: QMessageBox | None = None
+        self._model_loading_popup: ModelLoadingDialog | None = None
         self._engine_voices: list[VoiceInfo] = []
         self._cloned_voice_artifacts: dict[str, str] = {}
         self._clone_enrollment_pending = False
@@ -792,6 +862,23 @@ class MainWindow(QMainWindow):
     def _license_popup_finished(self, _result: int) -> None:
         self._license_popup = None
 
+    def _show_model_loading_popup(self) -> None:
+        if self._model_loading_popup is not None:
+            self._model_loading_popup.raise_()
+            self._model_loading_popup.activateWindow()
+            return
+        popup = ModelLoadingDialog(self)
+        popup.finished.connect(self._model_loading_popup_finished)
+        self._model_loading_popup = popup
+        popup.open()
+
+    def _hide_model_loading_popup(self) -> None:
+        if self._model_loading_popup is not None:
+            self._model_loading_popup.complete()
+
+    def _model_loading_popup_finished(self, _result: int) -> None:
+        self._model_loading_popup = None
+
     def _runtime_changed(self, runtime: object) -> None:
         self.active_model_card.set_runtime(runtime)
         self.model_settings_page.set_runtime(runtime)
@@ -829,6 +916,11 @@ class MainWindow(QMainWindow):
         self.voice_selector.set_voices(voices, self._cloned_voice_artifacts)
 
     def _state_changed(self, state: str) -> None:
+        if state == "loading_engine":
+            self._show_model_loading_popup()
+        else:
+            self._hide_model_loading_popup()
+
         messages = {
             "idle": "Sẵn sàng tạo giọng nói.",
             "loading_engine": "Đang kiểm tra và tải model vào GPU...",
@@ -986,6 +1078,8 @@ class MainWindow(QMainWindow):
 
         if self._license_popup is not None:
             self._license_popup.close()
+        if self._model_loading_popup is not None:
+            self._model_loading_popup.complete()
         self._clone_playback.shutdown()
         self._playback.shutdown()
         self._view_model.shutdown()

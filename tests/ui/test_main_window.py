@@ -12,6 +12,7 @@ from PySide6.QtCore import Qt, QThreadPool, QTimer
 from PySide6.QtWidgets import (
     QApplication,
     QBoxLayout,
+    QDialog,
     QFileDialog,
     QInputDialog,
     QLabel,
@@ -205,6 +206,83 @@ def test_unlicensed_startup_locks_feature_pages_and_redirects_to_payment(
     window.nav_compose_button.click()
 
     assert window._license_popup is second_popup
+
+
+def test_model_loading_popup_blocks_app_after_activation_and_closes_when_ready(
+    qtbot,
+    settings: Settings,
+) -> None:  # type: ignore[no-untyped-def]
+    class UnlicensedService:
+        def saved_key(self) -> str | None:
+            return None
+
+        def validate_saved(self) -> LicenseActivationResult:
+            return LicenseActivationResult(
+                activated=False,
+                message=LICENSE_REQUIRED_MESSAGE,
+                status=LicenseStatus.NOT_ACTIVATED,
+            )
+
+    registry = EngineRegistry()
+    registry.register("stub", lambda: StubTTSEngine(), StubTTSEngine.INFO)
+    use_case = SynthesizeSpeech(EngineFactory(registry), registry)
+
+    def delayed_hardware() -> HardwareInfo:
+        time.sleep(0.15)
+        return HardwareInfo(
+            cpu_name="Test CPU",
+            physical_cores=4,
+            logical_cores=8,
+            ram_gb=8,
+            gpu_name=None,
+            vram_gb=None,
+            cuda_available=False,
+            operating_system="Test",
+            architecture="x64",
+        )
+
+    view_model = MainViewModel(
+        registry,
+        use_case,
+        settings,
+        hardware_detector=delayed_hardware,
+    )
+    window = MainWindow(
+        view_model,
+        settings,
+        license_service=UnlicensedService(),  # type: ignore[arg-type]
+    )
+    qtbot.addWidget(window)
+    window.show()
+
+    assert window._model_loading_popup is None
+    window._license_activated(
+        LicenseActivationResult(
+            activated=True,
+            message="Xác thực mã kích hoạt thành công.",
+        )
+    )
+
+    popup = window._model_loading_popup
+    assert popup is not None
+    assert popup.objectName() == "modelLoadingPopup"
+    assert popup.windowModality() == Qt.WindowModality.WindowModal
+    assert popup.isModal()
+    assert not bool(popup.windowFlags() & Qt.WindowType.WindowCloseButtonHint)
+    assert popup.title_label.text() == "Ứng dụng đang chuẩn bị"
+    assert "Vui lòng chờ" in popup.message_label.text()
+    assert popup.progress_bar.minimum() == 0
+    assert popup.progress_bar.maximum() == 0
+    assert view_model.state == "loading_engine"
+
+    popup.reject()
+    QApplication.processEvents()
+    assert popup.isVisible()
+    assert window._model_loading_popup is popup
+
+    qtbot.waitUntil(lambda: view_model.state == "idle", timeout=3_000)
+    qtbot.waitUntil(lambda: window._model_loading_popup is None, timeout=1_000)
+    assert popup.result() == QDialog.DialogCode.Accepted
 
 
 def test_license_expiring_while_open_blocks_next_synthesis(

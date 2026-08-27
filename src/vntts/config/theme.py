@@ -626,4 +626,28 @@ def build_stylesheet(t: Theme = THEME) -> str:
         border-radius: {t.radius_sm}px;
         padding: {t.space_1}px {t.space_2}px;
     }}
+
+    /* ---------- Model preparation dialog ---------- */
+    QDialog#modelLoadingPopup {{
+        background: {t.overlay_bg};
+    }}
+    QLabel#modelLoadingTitle {{
+        color: {t.text_primary};
+        font-size: {t.font_size_section}px;
+        font-weight: 600;
+    }}
+    QLabel#modelLoadingMessage {{
+        color: {t.text_secondary};
+    }}
+    QProgressBar#modelLoadingProgress {{
+        min-height: {t.space_2}px;
+        max-height: {t.space_2}px;
+        background: {t.border};
+        border: none;
+        border-radius: {t.space_1}px;
+    }}
+    QProgressBar#modelLoadingProgress::chunk {{
+        background: {t.accent};
+        border-radius: {t.space_1}px;
+    }}
     """
