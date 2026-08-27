@@ -20,7 +20,7 @@ from vntts.utils.machine_info import get_mac_address
 
 # Development-only key pair.  This public key matches the private seed used
 # by the test fixtures to sign sample licenses.
-PUBLIC_KEY = "KpKH0Ng-3UJLEbEktxTBcWn4p_V1smDJ5K5kkhbbf4A"
+PUBLIC_KEY = "Rh602_3nTT44STdnUh9qi7V9RumOd7uIF2u2ugCFOx0"
 CLOCK_ROLLBACK_MESSAGE = (
     "Phát hiện thời gian hệ thống không hợp lệ. "
     "Vui lòng kiểm tra lại ngày giờ của thiết bị."
