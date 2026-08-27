@@ -48,7 +48,7 @@ if (-not $PackageExistingArtifact) {
     & $BuildPython -m pip install --require-hashes -r $LockFile
     & $BuildPython -m pip install --no-deps --no-build-isolation $ProjectRoot
     & $BuildPython -c "import torch; assert '+cu128' in torch.__version__, torch.__version__"
-    & $BuildPython (Join-Path $ProjectRoot "scripts\prepare_vieneu_v3.py") --destination $ModelBundle --validate-only
+    & $BuildPython -X utf8 (Join-Path $ProjectRoot "scripts\prepare_vieneu_v3.py") --destination $ModelBundle --validate-only
 
     $env:VNTTS_ENVIRONMENT = "production"
     $env:VNTTS_LOG_LEVEL = "INFO"
@@ -59,6 +59,7 @@ else {
 }
 
 $Executable = Join-Path $DistDirectory "GPHI-TTS.exe"
+$IntermediateExecutable = Join-Path $ProjectRoot "build\vntts\GPHI-TTS.exe"
 $BundledManifest = Join-Path $DistDirectory "_internal\resources\models\vieneu-v3\manifest.json"
 $BundledG2PData = Join-Path $DistDirectory "_internal\sea_g2p\sea_g2p.bin"
 if (-not (Test-Path -LiteralPath $Executable -PathType Leaf)) {
@@ -69,6 +70,13 @@ if (-not (Test-Path -LiteralPath $BundledManifest -PathType Leaf)) {
 }
 if (-not (Test-Path -LiteralPath $BundledG2PData -PathType Leaf)) {
     throw "Artifact is missing sea_g2p.bin required for synthesis."
+}
+
+# PyInstaller leaves a bootloader EXE in build\vntts without the adjacent
+# _internal directory. It is not runnable as an onedir application and can be
+# mistaken for the release EXE, which then fails while importing NumPy.
+if (Test-Path -LiteralPath $IntermediateExecutable -PathType Leaf) {
+    Remove-Item -LiteralPath $IntermediateExecutable -Force
 }
 
 if (-not $SkipArtifactSmokeTest) {
@@ -171,7 +179,11 @@ for ($Attempt = 1; $Attempt -le 3; $Attempt++) {
         if (Test-Path -LiteralPath $PortableArchive) {
             Remove-Item -LiteralPath $PortableArchive -Force
         }
-        Compress-Archive -LiteralPath $DistDirectory -DestinationPath $PortableArchive -CompressionLevel Optimal -ErrorAction Stop
+        # Archive the contents at the ZIP root. Windows Explorer already
+        # creates a folder named after the ZIP during extraction; avoiding an
+        # additional GPHI-TTS directory keeps bundled model paths under
+        # Windows' traditional MAX_PATH limit.
+        Compress-Archive -Path (Join-Path $DistDirectory "*") -DestinationPath $PortableArchive -CompressionLevel Optimal -ErrorAction Stop
         $ArchiveCreated = $true
         break
     }
@@ -192,7 +204,7 @@ if (-not $ArchiveCreated) {
             Remove-Item -LiteralPath $PortableArchive -Force
         }
         Write-Warning "Compress-Archive could not read the scanned EXE; falling back to Windows tar.exe."
-        & $Tar.Source -a -c -f $PortableArchive -C (Split-Path $DistDirectory -Parent) (Split-Path $DistDirectory -Leaf)
+        & $Tar.Source -a -c -f $PortableArchive -C $DistDirectory .
         $ArchiveCreated = $LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath $PortableArchive -PathType Leaf)
     }
 }

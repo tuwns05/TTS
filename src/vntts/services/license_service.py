@@ -20,7 +20,7 @@ from vntts.utils.machine_info import get_mac_address
 
 # Development-only key pair.  This public key matches the private seed used
 # by the test fixtures to sign sample licenses.
-TEST_LICENSE_PUBLIC_KEY = "KpKH0Ng-3UJLEbEktxTBcWn4p_V1smDJ5K5kkhbbf4A"
+PUBLIC_KEY = "KpKH0Ng-3UJLEbEktxTBcWn4p_V1smDJ5K5kkhbbf4A"
 CLOCK_ROLLBACK_MESSAGE = (
     "Phát hiện thời gian hệ thống không hợp lệ. "
     "Vui lòng kiểm tra lại ngày giờ của thiết bị."
@@ -90,7 +90,7 @@ class LicenseService:
         *,
         mac_provider: Callable[[], str] = get_mac_address,
         now_provider: Callable[[], datetime] = _local_now,
-        public_key: str = TEST_LICENSE_PUBLIC_KEY,
+        public_key: str = PUBLIC_KEY,
     ) -> None:
         self._mac_provider = mac_provider
         self._now_provider = now_provider

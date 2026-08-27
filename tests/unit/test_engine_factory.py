@@ -2,9 +2,9 @@
 
 import pytest
 
+from tests.stubs import StubTTSEngine
 from vntts.engines.factory import EngineFactory, EngineRegistry
 from vntts.utils.exceptions import EngineNotFoundError
-from tests.stubs import StubTTSEngine
 
 
 def _factory() -> EngineFactory:

@@ -99,7 +99,7 @@ class TaskWorker(QRunnable, Generic[P, R]):
                 "Tác vụ nền thất bại: {}", type(exc).__name__
             )
             self.signals.error.emit(str(exc))
-        except Exception:
+        except Exception:  # noqa: BLE001 - worker boundary must contain SDK failures
             logger.exception("Lỗi kỹ thuật không mong đợi trong tác vụ nền")
             self.signals.error.emit("Đã xảy ra lỗi kỹ thuật. Vui lòng kiểm tra nhật ký.")
         finally:

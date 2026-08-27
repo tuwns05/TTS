@@ -9,7 +9,7 @@ from collections.abc import Callable
 from concurrent.futures import CancelledError
 from pathlib import Path
 from threading import Event
-from typing import Protocol
+from typing import ClassVar, Protocol
 
 from vntts.db.models import (
     KOKORO_VI_ENGINE_ID,
@@ -71,7 +71,7 @@ class KokoroVIEngine(BaseTTSEngine):
         cpu_supported=True,
         gpu_supported=False,
     )
-    VOICE_NAMES = {
+    VOICE_NAMES: ClassVar[dict[str, str]] = {
         "diem_trinh": "Diễm Trinh",
         "hung_thinh": "Hưng Thịnh",
         "mai_linh": "Mai Linh",

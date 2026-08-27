@@ -7,7 +7,6 @@ import soundfile as sf
 from vntts.services.audio_processor import TARGET_PEAK, preprocess_reference_audio
 from vntts.utils.exceptions import ValidationError
 
-
 SAMPLE_RATE = 8_000
 
 

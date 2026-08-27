@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import numpy as np
+
 from vntts.services.voice_profiles import VoiceProfileStore
 
 

@@ -6,9 +6,18 @@ import time
 
 import numpy as np
 
-from vntts.db.models import EngineInfo, EngineSynthesisOptions, SynthesisResult, VoiceInfo
+from vntts.db.models import (
+    EngineInfo,
+    EngineSynthesisOptions,
+    SynthesisResult,
+    VoiceInfo,
+)
 from vntts.engines.base import BaseTTSEngine, EngineCapabilities
-from vntts.utils.exceptions import EngineLoadError, EngineNotLoadedError, ValidationError
+from vntts.utils.exceptions import (
+    EngineLoadError,
+    EngineNotLoadedError,
+    ValidationError,
+)
 
 
 class StubTTSEngine(BaseTTSEngine):

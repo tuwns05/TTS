@@ -2,9 +2,9 @@
 
 import pytest
 
+from tests.stubs import StubTTSEngine
 from vntts.engines.factory import EngineRegistry
 from vntts.utils.exceptions import EngineNotFoundError, ValidationError
-from tests.stubs import StubTTSEngine
 
 
 def test_register_and_create_engine() -> None:

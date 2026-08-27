@@ -165,7 +165,7 @@ payment:
 
 UI đang hiển thị năm gói nhưng `_validated_payment_request()` chỉ chấp nhận `monthly` và `yearly`; `PaymentRequest` còn gửi `LOCAL_TEST_PRICE_VND = 1_990_000` thay vì giá được chọn. Phải đồng bộ UI/validation/payload và chuyển quyền quyết định giá sang server trước release.
 
-`LicenseService` hiện dùng public key có tên `TEST_LICENSE_PUBLIC_KEY`. Đây là release blocker: trước production thật phải thay bằng public key phát hành, giữ private key hoàn toàn ngoài repository/app và cập nhật test fixture tương ứng.
+`LicenseService` hiện dùng public key có tên `PUBLIC_KEY`. Đây là release blocker: trước production thật phải thay bằng public key phát hành, giữ private key hoàn toàn ngoài repository/app và cập nhật test fixture tương ứng.
 
 ## 9. Xử lý lỗi thường gặp
 

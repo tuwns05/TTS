@@ -2,11 +2,11 @@
 
 import pytest
 
+from vntts.config.settings import Settings
+from vntts.db.models import HardwareInfo
 from vntts.services.hardware import (
     EngineRecommendationService,
 )
-from vntts.config.settings import Settings
-from vntts.db.models import HardwareInfo
 
 
 def _hardware(

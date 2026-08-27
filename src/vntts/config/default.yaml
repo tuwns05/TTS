@@ -4,10 +4,10 @@ application:
   # Cần kiểm tra và thay bằng thông tin doanh nghiệp thật trước khi phát hành.
   manufacturer: "CÔNG TY CỔ PHẦN ĐẦU TƯ GIẢI PHÁP HỮU ÍCH"
   address: "Lô 17, Khu nhà liền kề Chung cư Simona, đường Hoàng Văn Thụ, Phường Quy Nhơn Nam, Tỉnh Gia Lai"
-  phone: "0347775677" 
-  website: "https://gphi.tech/" # Cần thay bằng website thật.
-  support_email: "gphi@gmail.com.vn" # Cần thay bằng email hỗ trợ thật.
-  copyright: "© 2026 CÔNG TY CỔ PHẦN ĐẦU TƯ GIẢI PHÁP HỮU ÍCH." # Cần thay bằng thông tin bản quyền thật.
+  phone: "0347775677"
+  website: "https://gphi.tech/"
+  support_email: "gphi@gmail.com.vn"
+  copyright: "© 2026 CÔNG TY CỔ PHẦN ĐẦU TƯ GIẢI PHÁP HỮU ÍCH."
 
 paths:
   # Read-only in a packaged build; VieNeu v3 is bundled here for offline startup.

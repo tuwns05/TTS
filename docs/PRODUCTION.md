@@ -92,6 +92,11 @@ release/GPHI-TTS-0.1.0-win-x64.zip
 release/GPHI-TTS-0.1.0-win-x64.zip.sha256
 ```
 
+Chỉ chạy `dist/GPHI-TTS/GPHI-TTS.exe` hoặc EXE nằm trong thư mục ZIP đã giải
+nén đầy đủ. Không chạy `build/vntts/GPHI-TTS.exe` và không copy riêng EXE;
+ứng dụng cần thư mục `_internal` nằm ngay bên cạnh. Phải đợi Windows giải nén
+hoàn tất trước khi chạy EXE và nên giải nén vào một đường dẫn ngắn.
+
 ### Đóng gói lại artifact có sẵn
 
 Chỉ dùng khi PyInstaller đã báo `Build complete!` nhưng Windows Application Control/antivirus chặn chạy smoke test:

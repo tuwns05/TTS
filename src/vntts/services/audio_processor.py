@@ -10,7 +10,6 @@ import soundfile as sf
 
 from vntts.utils.exceptions import ValidationError
 
-
 MIN_VOICED_DURATION_SECONDS = 6.0
 ENGINE_REFERENCE_LIMIT_SECONDS = 8.0
 VOICE_FRAME_SECONDS = 0.02

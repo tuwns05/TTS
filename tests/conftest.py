@@ -9,7 +9,7 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from vntts.config.settings import Settings, load_settings  # noqa: E402
+from vntts.config.settings import Settings, load_settings
 
 
 @pytest.fixture
