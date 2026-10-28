@@ -60,7 +60,7 @@ python -m pip install -r requirements/dev.txt
 python -m pip install -r requirements/vieneu.txt
 ```
 
-Nếu dùng GPU NVIDIA, cài thêm runtime GPU vào đúng môi trường chạy app. Gói `vieneu` mặc định không cài PyTorch và Transformers:
+`requirements/vieneu.txt` dùng chung `production.lock` với bản đóng gói, bao gồm runtime CPU và GPU. Lệnh dưới đây cài cùng bộ thư viện vào môi trường chạy app:
 
 Trên Windows, cài [Microsoft Visual C++ Runtime x64](https://aka.ms/vc14/vc_redist.x64.exe) nếu chưa có; thiếu thành phần này có thể gây lỗi `c10.dll` / `WinError 126` khi import PyTorch.
 
@@ -69,7 +69,7 @@ Trên Windows, cài [Microsoft Visual C++ Runtime x64](https://aka.ms/vc14/vc_re
 .\.venv\Scripts\python.exe -c "import torch; print(torch.__version__); print('CUDA:', torch.cuda.is_available()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CUDA chưa sẵn sàng')"
 ```
 
-File trên dùng PyTorch 2.8.0 / CUDA 12.6. Khi kiểm tra trả về `CUDA: True`, mở lại app; chế độ tự động sẽ ưu tiên GPU nếu đạt ngưỡng VRAM cấu hình. `nvidia-smi` nhận card chỉ xác nhận driver, chưa đảm bảo môi trường Python có runtime GPU. Quy trình build production vẫn khóa PyTorch CUDA 12.8 riêng trong `requirements/production.lock`.
+Development và bản đóng gói dùng cùng phiên bản: VieNeu 3.2.4, ONNX Runtime 1.28.0 và PyTorch 2.8.0 / CUDA 12.8. Khi kiểm tra trả về `CUDA: True`, mở lại app. `nvidia-smi` nhận card chỉ xác nhận driver, chưa đảm bảo môi trường Python có runtime GPU.
 
 ## Chạy ứng dụng
 

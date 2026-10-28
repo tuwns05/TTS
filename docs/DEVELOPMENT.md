@@ -19,19 +19,17 @@ python -m pip install -r requirements/dev.txt
 python -m pip install -r requirements/vieneu.txt
 ```
 
-`requirements/dev.txt` kéo `requirements/base.txt`, còn `base.txt` cài project editable và dependency trung lập với engine. `requirements/vieneu.txt` thêm VieNeu cùng dependency runtime.
+`requirements/dev.txt` cài project editable và công cụ kiểm thử. `requirements/vieneu.txt` dùng nguyên `production.lock` để giữ runtime giống bản đóng gói: VieNeu 3.2.4, ONNX Runtime 1.28.0, PyTorch/Torchaudio 2.8.0+cu128.
 
-Nếu dùng NVIDIA, cài PyTorch phù hợp trước VieNeu. Ví dụ môi trường cùng dòng CUDA 12.8 với production lock:
+`requirements/vieneu-gpu.txt` cũng dùng cùng lock; không cần cài thêm phiên bản CUDA khác. Kiểm tra sau khi cài:
 
 ```powershell
-python -m pip install torch==2.8.0 torchaudio==2.8.0 --index-url https://download.pytorch.org/whl/cu128
-python -m pip install -r requirements/vieneu.txt
+python -c "import torch, onnxruntime; print(torch.__version__, onnxruntime.__version__); print('CUDA:', torch.cuda.is_available())"
 ```
 
-Không cài `hf-gradio`. Nếu môi trường cũ đã có gói này:
+Kiểm tra tính tương thích của bộ thư viện:
 
 ```powershell
-python -m pip uninstall -y hf-gradio
 python -m pip check
 ```
 

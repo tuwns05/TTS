@@ -1,7 +1,2 @@
-# Windows NVIDIA GPU runtime; install into the same venv that launches the app.
-# CUDA 12.6 wheels also support the RTX 4050 with the 561.00 driver.
---extra-index-url https://download.pytorch.org/whl/cu126
+# CPU and NVIDIA GPU runtimes share the production lock (CUDA 12.8).
 -r vieneu.txt
-torch==2.8.0+cu126
-torchaudio==2.8.0+cu126
-transformers==4.57.6
