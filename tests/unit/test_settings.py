@@ -93,7 +93,7 @@ def test_application_contact_fields_are_optional_and_normalized(
     config_path.write_text(
         """
 application:
-  name: GPHI-TTS
+  name: SI-TTS
   environment: development
   manufacturer: "  Công ty thử nghiệm  "
   address: "  Địa chỉ thử nghiệm  "

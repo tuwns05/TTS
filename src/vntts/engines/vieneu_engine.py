@@ -95,6 +95,28 @@ def _cuda_available() -> bool:
         return False
 
 
+def _cuda_unavailable_reason() -> str:
+    """Distinguish a missing GPU runtime from an absent physical GPU."""
+
+    prefix = "GPU NVIDIA/CUDA chưa sẵn sàng. "
+    try:
+        torch = importlib.import_module("torch")
+    except ModuleNotFoundError as exc:
+        if exc.name == "torch":
+            return prefix + "Môi trường chạy app chưa cài PyTorch hỗ trợ CUDA."
+        return prefix + "Không nạp được thư viện phụ thuộc của PyTorch."
+    except OSError:
+        return prefix + (
+            "Không nạp được PyTorch hoặc DLL phụ thuộc. "
+            "Trên Windows, hãy kiểm tra Microsoft Visual C++ Runtime x64."
+        )
+    except Exception:  # noqa: BLE001 - diagnostic must not mask the load error
+        return prefix + "Không nạp được PyTorch. Hãy kiểm tra cài đặt runtime GPU."
+    if getattr(getattr(torch, "version", None), "cuda", None) is None:
+        return prefix + "PyTorch đang cài là bản CPU; cần cài bản hỗ trợ CUDA."
+    return prefix + "Hãy kiểm tra driver NVIDIA và khả năng tương thích với PyTorch."
+
+
 class BaseVieNeuEngine(BaseTTSEngine):
     """Adapt the legacy VieNeu v2 standard mode using local paths only."""
 
@@ -621,7 +643,7 @@ class VieNeuV3Engine(BaseTTSEngine):
             return "cuda" if _cuda_available() else "cpu"
         if requested == "cuda" and not _cuda_available():
             raise EngineLoadError(
-                "Không tìm thấy GPU NVIDIA/CUDA khả dụng. Hãy chọn CPU."
+                _cuda_unavailable_reason() + " Có thể chọn CPU để tiếp tục."
             )
         return requested
 

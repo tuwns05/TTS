@@ -1,8 +1,8 @@
-# Kiến trúc GPHI-TTS
+# Kiến trúc SI-TTS
 
 ## 1. Tổng quan
 
-GPHI-TTS là ứng dụng desktop PySide6 theo hướng phân lớp. UI chỉ điều phối trạng thái; nghiệp vụ tổng hợp, tài liệu, audio, license và persistence nằm trong các service thuần Python; SDK TTS được cô lập sau adapter.
+SI-TTS là ứng dụng desktop PySide6 theo hướng phân lớp. UI chỉ điều phối trạng thái; nghiệp vụ tổng hợp, tài liệu, audio, license và persistence nằm trong các service thuần Python; SDK TTS được cô lập sau adapter.
 
 ```mermaid
 flowchart LR

@@ -1,4 +1,4 @@
-# Đóng gói và phát hành GPHI-TTS trên Windows
+# Đóng gói và phát hành SI-TTS trên Windows
 
 ## 1. Phạm vi artifact
 
@@ -12,7 +12,7 @@ Bản `0.1.0` đóng gói theo PyInstaller `onedir`, chỉ đăng ký VieNeu-TTS
 - license offline, payment request, trang cài đặt/liên hệ;
 - model VieNeu v3 đã pin và xác minh checksum.
 
-VieNeu v2/Kokoro không được đăng ký, tải hoặc bundle. Không phát hành riêng `GPHI-TTS.exe`; phải phát hành cả thư mục `GPHI-TTS` hoặc installer.
+VieNeu v2/Kokoro không được đăng ký, tải hoặc bundle. Không phát hành riêng `SI-TTS.exe`; phải phát hành cả thư mục `SI-TTS` hoặc installer.
 
 ## 2. Yêu cầu máy build
 
@@ -87,13 +87,13 @@ Script thực hiện:
 Artifact:
 
 ```text
-dist/GPHI-TTS/GPHI-TTS.exe
-release/GPHI-TTS-0.1.0-win-x64.zip
-release/GPHI-TTS-0.1.0-win-x64.zip.sha256
+dist/SI-TTS/SI-TTS.exe
+release/SI-TTS-0.1.0-win-x64.zip
+release/SI-TTS-0.1.0-win-x64.zip.sha256
 ```
 
-Chỉ chạy `dist/GPHI-TTS/GPHI-TTS.exe` hoặc EXE nằm trong thư mục ZIP đã giải
-nén đầy đủ. Không chạy `build/vntts/GPHI-TTS.exe` và không copy riêng EXE;
+Chỉ chạy `dist/SI-TTS/SI-TTS.exe` hoặc EXE nằm trong thư mục ZIP đã giải
+nén đầy đủ. Không chạy `build/vntts/SI-TTS.exe` và không copy riêng EXE;
 ứng dụng cần thư mục `_internal` nằm ngay bên cạnh. Phải đợi Windows giải nén
 hoàn tất trước khi chạy EXE và nên giải nén vào một đường dẫn ngắn.
 
@@ -119,7 +119,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build_production.ps1 `
 Kết quả:
 
 ```text
-release/GPHI-TTS-0.1.0-win-x64-setup.exe
+release/SI-TTS-0.1.0-win-x64-setup.exe
 ```
 
 Installer cài per-user (`PrivilegesRequired=lowest`) và có tùy chọn shortcut desktop. Ký số cả setup và ZIP trước khi phát hành công khai.
@@ -129,7 +129,7 @@ Installer cài per-user (`PrivilegesRequired=lowest`) và có tùy chọn shortc
 Thực hiện trên Windows sạch, không Python, không Hugging Face cache và ngắt mạng:
 
 1. Kiểm tra SHA-256 của ZIP rồi giải nén toàn bộ.
-2. Mở `GPHI-TTS.exe`; xác nhận chỉ có một instance và UI hiển thị bình thường.
+2. Mở `SI-TTS.exe`; xác nhận chỉ có một instance và UI hiển thị bình thường.
 3. Xác nhận license chưa có sẽ khóa trang tạo/clone và điều hướng sang Thanh toán.
 4. Kích hoạt bằng license staging đúng MAC; đóng/mở lại và xác nhận trạng thái còn hợp lệ.
 5. Chờ model sẵn sàng; runtime phải hiện `GPU · <tên> · PyTorch` hoặc `CPU · ONNX`.
@@ -179,8 +179,8 @@ Crash, treo UI, checksum sai, model tải mạng, thiếu preset voice, export h
 ## 9. Cấu trúc artifact
 
 ```text
-GPHI-TTS/
-├── GPHI-TTS.exe
+SI-TTS/
+├── SI-TTS.exe
 └── _internal/
     ├── resources/models/vieneu-v3/
     │   ├── manifest.json

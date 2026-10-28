@@ -1,4 +1,4 @@
-# Hướng dẫn sử dụng GPHI-TTS
+# Hướng dẫn sử dụng SI-TTS
 
 ## 1. Khởi động và kích hoạt
 
@@ -107,7 +107,7 @@ Sao lưu toàn bộ `data/voice_profiles` nếu cần chuyển/khôi phục hồ
 |---|---|
 | Không tìm thấy CUDA | Cập nhật driver NVIDIA hoặc chọn CPU trong **Cài đặt**. |
 | Chế độ tự động chuyển sang CPU | Xem trạng thái runtime; GPU có thể thiếu VRAM hoặc load PyTorch thất bại. |
-| App báo thiếu/sai model | Cài lại artifact đầy đủ; không tách riêng EXE khỏi thư mục `GPHI-TTS`. |
+| App báo thiếu/sai model | Cài lại artifact đầy đủ; không tách riêng EXE khỏi thư mục `SI-TTS`. |
 | Không phát được audio | Kiểm tra thiết bị output mặc định và thử mở lại app. |
 | PDF không có nội dung | Chạy OCR bằng công cụ khác rồi nhập lại PDF/TXT. |
 | Mẫu giọng bị từ chối | Dùng file hợp lệ, có ít nhất 6 giây giọng nói rõ và tránh clipping. |

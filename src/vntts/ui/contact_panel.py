@@ -29,7 +29,7 @@ def _company_logo_path() -> Path:
     bundle_root = Path(
         getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[3])
     )
-    return bundle_root / "resources" / "image" / "logo-GPHI.webp"
+    return bundle_root / "resources" / "image" / "logo-SI.png"
 
 
 class ContactPage(QWidget):

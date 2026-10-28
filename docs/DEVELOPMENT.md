@@ -1,4 +1,4 @@
-# Hướng dẫn phát triển GPHI-TTS
+# Hướng dẫn phát triển SI-TTS
 
 ## 1. Môi trường hỗ trợ
 

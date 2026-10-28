@@ -13,7 +13,7 @@ $BuildVenv = Join-Path $ProjectRoot ".venv-build"
 $BuildPython = Join-Path $BuildVenv "Scripts\python.exe"
 $ModelBundle = Join-Path $ProjectRoot "resources\models\vieneu-v3"
 $LockFile = Join-Path $ProjectRoot "requirements\production.lock"
-$DistDirectory = Join-Path $ProjectRoot "dist\GPHI-TTS"
+$DistDirectory = Join-Path $ProjectRoot "dist\SI-TTS"
 $ReleaseDirectory = Join-Path $ProjectRoot "release"
 $Version = "0.1.0"
 
@@ -55,15 +55,15 @@ if (-not $PackageExistingArtifact) {
     & $BuildPython -m PyInstaller --noconfirm --clean (Join-Path $ProjectRoot "packaging\vntts.spec")
 }
 else {
-    Write-Warning "Packaging the existing dist\GPHI-TTS artifact; dependencies and PyInstaller will not run again."
+    Write-Warning "Packaging the existing dist\SI-TTS artifact; dependencies and PyInstaller will not run again."
 }
 
-$Executable = Join-Path $DistDirectory "GPHI-TTS.exe"
-$IntermediateExecutable = Join-Path $ProjectRoot "build\vntts\GPHI-TTS.exe"
+$Executable = Join-Path $DistDirectory "SI-TTS.exe"
+$IntermediateExecutable = Join-Path $ProjectRoot "build\vntts\SI-TTS.exe"
 $BundledManifest = Join-Path $DistDirectory "_internal\resources\models\vieneu-v3\manifest.json"
 $BundledG2PData = Join-Path $DistDirectory "_internal\sea_g2p\sea_g2p.bin"
 if (-not (Test-Path -LiteralPath $Executable -PathType Leaf)) {
-    throw "PyInstaller did not create GPHI-TTS.exe."
+    throw "PyInstaller did not create SI-TTS.exe."
 }
 if (-not (Test-Path -LiteralPath $BundledManifest -PathType Leaf)) {
     throw "Artifact is missing the model manifest."
@@ -96,7 +96,7 @@ if (-not $SkipArtifactSmokeTest) {
         -PassThru `
         -WindowStyle Hidden
     if ($SmokeProcess.ExitCode -ne 0) {
-        throw "Real synthesis smoke test with GPHI-TTS.exe failed."
+        throw "Real synthesis smoke test with SI-TTS.exe failed."
     }
     if (-not (Test-Path -LiteralPath $SmokeWav -PathType Leaf) -or (Get-Item -LiteralPath $SmokeWav).Length -le 44) {
         throw "Smoke test did not create a valid WAV file."
@@ -122,7 +122,7 @@ if (-not $SkipArtifactSmokeTest) {
             -PassThru `
             -WindowStyle Hidden
         if ($GpuSmokeProcess.ExitCode -ne 0) {
-            throw "PyTorch/CUDA smoke test with GPHI-TTS.exe failed."
+            throw "PyTorch/CUDA smoke test with SI-TTS.exe failed."
         }
         if (-not (Test-Path -LiteralPath $GpuSmokeWav -PathType Leaf) -or (Get-Item -LiteralPath $GpuSmokeWav).Length -le 44) {
             throw "GPU smoke test did not create a valid WAV file."
@@ -164,12 +164,12 @@ if (-not $SkipArtifactSmokeTest) {
         }
     }
     if (-not $ExecutableUnlocked) {
-        throw "GPHI-TTS.exe is still locked after 120 seconds. Close the app and build again."
+        throw "SI-TTS.exe is still locked after 120 seconds. Close the app and build again."
     }
 }
 
 New-Item -ItemType Directory -Path $ReleaseDirectory -Force | Out-Null
-$PortableArchive = Join-Path $ReleaseDirectory "GPHI-TTS-$Version-win-x64.zip"
+$PortableArchive = Join-Path $ReleaseDirectory "SI-TTS-$Version-win-x64.zip"
 if (Test-Path -LiteralPath $PortableArchive) {
     Remove-Item -LiteralPath $PortableArchive -Force
 }
@@ -181,7 +181,7 @@ for ($Attempt = 1; $Attempt -le 3; $Attempt++) {
         }
         # Archive the contents at the ZIP root. Windows Explorer already
         # creates a folder named after the ZIP during extraction; avoiding an
-        # additional GPHI-TTS directory keeps bundled model paths under
+        # additional SI-TTS directory keeps bundled model paths under
         # Windows' traditional MAX_PATH limit.
         Compress-Archive -Path (Join-Path $DistDirectory "*") -DestinationPath $PortableArchive -CompressionLevel Optimal -ErrorAction Stop
         $ArchiveCreated = $true

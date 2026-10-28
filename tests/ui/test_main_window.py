@@ -268,7 +268,7 @@ def test_model_loading_popup_blocks_app_after_activation_and_closes_when_ready(
     assert popup.objectName() == "modelLoadingPopup"
     assert popup.windowModality() == Qt.WindowModality.WindowModal
     assert popup.isModal()
-    assert not bool(popup.windowFlags() & Qt.WindowType.WindowCloseButtonHint)
+    assert bool(popup.windowFlags() & Qt.WindowType.WindowCloseButtonHint)
     assert popup.title_label.text() == "Ứng dụng đang chuẩn bị"
     assert "Vui lòng chờ" in popup.message_label.text()
     assert popup.progress_bar.minimum() == 0
@@ -283,6 +283,29 @@ def test_model_loading_popup_blocks_app_after_activation_and_closes_when_ready(
     qtbot.waitUntil(lambda: view_model.state == "idle", timeout=3_000)
     qtbot.waitUntil(lambda: window._model_loading_popup is None, timeout=1_000)
     assert popup.result() == QDialog.DialogCode.Accepted
+    assert window.isVisible()
+
+
+def test_closing_model_loading_popup_closes_app(qtbot, settings, monkeypatch):
+    window, view_model = _window(qtbot, settings)
+    calls = []
+    monkeypatch.setattr(view_model, "shutdown", lambda: calls.append("shutdown"))
+    window._show_model_loading_popup()
+    popup = window._model_loading_popup
+    assert popup is not None
+
+    with qtbot.waitSignal(window.shutdown_started):
+        popup.close()
+
+    assert not window.isVisible()
+    assert not popup.isVisible()
+    assert window._model_loading_popup is None
+    assert calls == ["shutdown"]
+    # Closing again must not repeat cleanup or rearm the process watchdog.
+    window.close()
+    assert calls == ["shutdown"]
+    window._show_model_loading_popup()
+    assert window._model_loading_popup is None
 
 
 def test_license_expiring_while_open_blocks_next_synthesis(

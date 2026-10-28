@@ -166,7 +166,7 @@ def build_stylesheet(t: Theme = THEME) -> str:
     }}
     QLabel#sidebarBrand {{
         color: {t.text_primary};
-        font-size: {t.font_size_section + 1}px;
+        font-size: {t.font_size_section + 5}px;
         font-weight: 700;
         letter-spacing: 0.5px;
     }}

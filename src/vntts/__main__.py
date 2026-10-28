@@ -22,7 +22,7 @@ def _acquire_frozen_instance_mutex() -> bool:
     create_mutex = kernel32.CreateMutexW
     create_mutex.argtypes = (ctypes.c_void_p, ctypes.c_bool, ctypes.c_wchar_p)
     create_mutex.restype = ctypes.c_void_p
-    handle = create_mutex(None, False, "Local\\GPHI-TTS-0.1.0-SingleInstance")
+    handle = create_mutex(None, False, "Local\\SI-TTS-0.1.0-SingleInstance")
     if not handle:
         return False
     if ctypes.get_last_error() == _ERROR_ALREADY_EXISTS:

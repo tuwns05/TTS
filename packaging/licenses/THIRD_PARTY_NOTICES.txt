@@ -1,4 +1,4 @@
-GPHI-TTS THIRD-PARTY OPEN-SOURCE NOTICES
+SI-TTS THIRD-PARTY OPEN-SOURCE NOTICES
 ========================================
 
 This product includes open-source software and model assets developed by third

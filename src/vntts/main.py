@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import os
 import sys
 import wave
 from collections.abc import Sequence
 from multiprocessing import freeze_support
 from pathlib import Path
+from threading import Timer
 
 import numpy as np
 from loguru import logger
@@ -38,7 +40,7 @@ def _application_icon_path() -> Path:
     bundle_root = Path(
         getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[2])
     )
-    return bundle_root / "resources" / "image" / "logo-GPHI.ico"
+    return bundle_root / "resources" / "image" / "logo-SI.ico"
 
 
 def _set_windows_app_user_model_id() -> None:
@@ -50,7 +52,7 @@ def _set_windows_app_user_model_id() -> None:
     import ctypes
 
     ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(  # type: ignore[attr-defined]
-        "GPHI.GPHI-TTS.Desktop"
+        "SI.SI-TTS.Desktop"
     )
 
 
@@ -127,6 +129,20 @@ def build_application(argv: Sequence[str] | None = None) -> tuple[QApplication, 
     return application, window
 
 
+def _arm_shutdown_watchdog() -> None:
+    """Bound process shutdown when a native model loader cannot be cancelled.
+
+    Keep normal worker cancellation and engine cleanup, but do not let an SDK
+    call or ThreadPoolExecutor's interpreter-exit join keep the app alive.
+    A daemon timer does not delay a successful shutdown. Wire this only in the
+    executable entry point, never in embedded windows or the UI test process.
+    """
+
+    watchdog = Timer(3.0, os._exit, args=(0,))
+    watchdog.daemon = True
+    watchdog.start()
+
+
 def main() -> int:
     """Start the Qt event loop."""
 
@@ -137,6 +153,7 @@ def main() -> int:
         return _run_production_smoke(Path(sys.argv[2]), device)
 
     application, window = build_application()
+    window.shutdown_started.connect(_arm_shutdown_watchdog)
     window.show()
     QTimer.singleShot(0, window.start_initialization)
     return application.exec()

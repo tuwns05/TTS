@@ -1,6 +1,6 @@
-# GPHI-TTS
+# SI-TTS
 
-GPHI-TTS là ứng dụng desktop chuyển văn bản tiếng Việt thành giọng nói, ưu tiên xử lý cục bộ và hoạt động offline trên Windows. Bản production hiện tại sử dụng **VieNeu-TTS v3-Turbo**, chạy bằng **PyTorch/CUDA trên GPU NVIDIA** hoặc **ONNX trên CPU**.
+SI-TTS là ứng dụng desktop chuyển văn bản tiếng Việt thành giọng nói, ưu tiên xử lý cục bộ và hoạt động offline trên Windows. Bản production hiện tại sử dụng **VieNeu-TTS v3-Turbo**, chạy bằng **PyTorch/CUDA trên GPU NVIDIA** hoặc **ONNX trên CPU**.
 
 > Trạng thái dự án: ứng dụng đã hoàn thiện luồng chính gồm kích hoạt bản quyền, tổng hợp giọng, nhập tài liệu, điều chỉnh âm thanh, phát/xuất audio, nhân bản giọng và đóng gói Windows. Trước khi phát hành công khai vẫn cần hoàn tất các mục trong [checklist release](docs/PRODUCTION.md#8-checklist-trước-khi-phát-hành).
 
@@ -60,7 +60,16 @@ python -m pip install -r requirements/dev.txt
 python -m pip install -r requirements/vieneu.txt
 ```
 
-Nếu dùng CUDA, cài bản PyTorch phù hợp với driver/runtime mục tiêu trước khi cài VieNeu. Quy trình build production hiện khóa PyTorch CUDA 12.8 trong `requirements/production.lock`.
+Nếu dùng GPU NVIDIA, cài thêm runtime GPU vào đúng môi trường chạy app. Gói `vieneu` mặc định không cài PyTorch và Transformers:
+
+Trên Windows, cài [Microsoft Visual C++ Runtime x64](https://aka.ms/vc14/vc_redist.x64.exe) nếu chưa có; thiếu thành phần này có thể gây lỗi `c10.dll` / `WinError 126` khi import PyTorch.
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements/vieneu-gpu.txt
+.\.venv\Scripts\python.exe -c "import torch; print(torch.__version__); print('CUDA:', torch.cuda.is_available()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CUDA chưa sẵn sàng')"
+```
+
+File trên dùng PyTorch 2.8.0 / CUDA 12.6. Khi kiểm tra trả về `CUDA: True`, mở lại app; chế độ tự động sẽ ưu tiên GPU nếu đạt ngưỡng VRAM cấu hình. `nvidia-smi` nhận card chỉ xác nhận driver, chưa đảm bảo môi trường Python có runtime GPU. Quy trình build production vẫn khóa PyTorch CUDA 12.8 riêng trong `requirements/production.lock`.
 
 ## Chạy ứng dụng
 

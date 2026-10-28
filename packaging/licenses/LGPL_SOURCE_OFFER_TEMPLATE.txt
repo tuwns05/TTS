@@ -20,9 +20,9 @@ Request source from:
     Address:      Lô 17, Khu nhà liền kề Chung cư Simona,
                   đường Hoàng Văn Thụ, Phường Quy Nhơn Nam, Tỉnh Gia Lai
     Phone:        0347775677
-    Email:        gphi@gmail.com.vn
-    Website:      https://gphi.tech/
-    Product:      GPHI-TTS
+    Email:        si@gmail.com.vn
+    Website:      https://si.tech/
+    Product:      SI-TTS
     Release:      0.1.0
     Copyright:    © 2026 CÔNG TY CỔ PHẦN ĐẦU TƯ GIẢI PHÁP HỮU ÍCH.
 

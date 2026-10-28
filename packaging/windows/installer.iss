@@ -1,6 +1,6 @@
-#define MyAppName "GPHI-TTS"
+#define MyAppName "SI-TTS"
 #define MyAppVersion "0.1.0"
-#define MyAppExeName "GPHI-TTS.exe"
+#define MyAppExeName "SI-TTS.exe"
 
 [Setup]
 AppId={{5D7E8C22-25F0-44AE-B652-816114A5522D}
@@ -9,7 +9,7 @@ AppVersion={#MyAppVersion}
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 OutputDir=..\..\release
-OutputBaseFilename=GPHI-TTS-{#MyAppVersion}-win-x64-setup
+OutputBaseFilename=SI-TTS-{#MyAppVersion}-win-x64-setup
 Compression=lzma2/ultra64
 SolidCompression=yes
 ArchitecturesAllowed=x64compatible
@@ -19,7 +19,7 @@ WizardStyle=modern
 UninstallDisplayIcon={app}\{#MyAppExeName}
 
 [Files]
-Source: "..\..\dist\GPHI-TTS\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\..\dist\SI-TTS\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"

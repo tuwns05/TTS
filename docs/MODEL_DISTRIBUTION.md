@@ -91,7 +91,7 @@ Phân biệt hai layout:
 `packaging/vntts.spec` copy toàn bộ `resources/models/vieneu-v3` vào:
 
 ```text
-dist/GPHI-TTS/_internal/resources/models/vieneu-v3/
+dist/SI-TTS/_internal/resources/models/vieneu-v3/
 ```
 
 Build script kiểm tra manifest trong output rồi chạy synthesis thật CPU/ONNX; nếu máy build có CUDA thì chạy thêm GPU/PyTorch. Chỉ phát hành cả thư mục onedir/ZIP hoặc installer.

@@ -4,6 +4,7 @@ import warnings
 from concurrent.futures import CancelledError
 from pathlib import Path
 from threading import Event
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -123,9 +124,11 @@ def test_vieneu_v3_loads_from_local_model_directory(tmp_path: Path) -> None:
     assert runtime.closed
 
 
+@pytest.mark.parametrize("device", ["auto", "cuda"])
 def test_vieneu_v3_gpu_uses_pytorch_backend(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    device: str,
 ) -> None:
     model_path = tmp_path / "vieneu-v3"
     tokenizer_path = model_path / "moss-tokenizer"
@@ -139,7 +142,7 @@ def test_vieneu_v3_gpu_uses_pytorch_backend(
         tokenizer_path=tokenizer_path,
         sdk_factory=lambda **kwargs: calls.append(kwargs) or _VieNeuRuntime(),
     )
-    engine.load("cuda")
+    engine.load(device)
 
     assert calls[0]["device"] == "cuda"
     assert calls[0]["backend"] == "pytorch"
@@ -164,6 +167,25 @@ def test_vieneu_v3_explicit_gpu_reports_missing_cuda(
 
     with pytest.raises(EngineLoadError, match="GPU NVIDIA/CUDA"):
         engine.load("cuda")
+
+
+@pytest.mark.parametrize(
+    ("runtime", "expected"),
+    [
+        (ModuleNotFoundError("missing torch", name="torch"), "chưa cài PyTorch"),
+        (SimpleNamespace(version=SimpleNamespace(cuda=None)), "bản CPU"),
+        (OSError("DLL load failed"), "Không nạp được PyTorch"),
+        (SimpleNamespace(version=SimpleNamespace(cuda="12.6")), "driver NVIDIA"),
+    ],
+)
+def test_cuda_diagnostic_identifies_runtime_problem(monkeypatch, runtime, expected):
+    def import_torch(_name):
+        if isinstance(runtime, Exception):
+            raise runtime
+        return runtime
+
+    monkeypatch.setattr(vieneu_module.importlib, "import_module", import_torch)
+    assert expected in vieneu_module._cuda_unavailable_reason()
 
 
 def test_vieneu_v3_auto_falls_back_to_onnx_cpu_when_gpu_load_fails(

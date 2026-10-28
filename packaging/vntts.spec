@@ -14,8 +14,8 @@ project_root = Path(SPECPATH).resolve().parent
 source_root = project_root / "src"
 model_root = project_root / "resources" / "models" / "vieneu-v3"
 licenses_root = project_root / "packaging" / "licenses"
-app_icon = project_root / "resources" / "image" / "logo-GPHI.ico"
-company_logo = project_root / "resources" / "image" / "logo-GPHI.webp"
+app_icon = project_root / "resources" / "image" / "logo-SI.ico"
+company_logo = project_root / "resources" / "image" / "logo-SI.png"
 
 if not (model_root / "manifest.json").is_file():
     raise SystemExit("Thiếu bundle model. Chạy scripts/prepare_vieneu_v3.py trước.")
@@ -77,7 +77,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="GPHI-TTS",
+    name="SI-TTS",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -98,5 +98,5 @@ coll = COLLECT(
     strip=False,
     upx=False,
     upx_exclude=[],
-    name="GPHI-TTS",
+    name="SI-TTS",
 )

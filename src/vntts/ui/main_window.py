@@ -1,7 +1,15 @@
 """Desktop workspace for the Vietnamese text-to-speech workflow."""
 
-from PySide6.QtCore import QRectF, Qt
-from PySide6.QtGui import QCloseEvent, QColor, QPainter, QPaintEvent, QPen, QResizeEvent
+from PySide6.QtCore import QRectF, Qt, Signal
+from PySide6.QtGui import (
+    QCloseEvent,
+    QColor,
+    QPainter,
+    QPaintEvent,
+    QPen,
+    QPixmap,
+    QResizeEvent,
+)
 from PySide6.QtWidgets import (
     QBoxLayout,
     QDialog,
@@ -41,7 +49,7 @@ from vntts.ui.compose_view import (
     TextInputWidget,
     WaveformPreview,
 )
-from vntts.ui.contact_panel import ContactPage
+from vntts.ui.contact_panel import ContactPage, _company_logo_path
 from vntts.ui.payment_page import PaymentPage
 from vntts.ui.settings_panel import (
     ActiveModelCard,
@@ -93,14 +101,16 @@ class LicenseNavButton(QPushButton):
 class ModelLoadingDialog(QDialog):
     """Block the application while the speech model is being prepared."""
 
+    exit_requested = Signal()
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._allow_close = False
         self.setObjectName("modelLoadingPopup")
-        self.setWindowTitle("GPHI TTS · Đang chuẩn bị")
+        self.setWindowTitle("SI TTS · Đang chuẩn bị")
         self.setWindowModality(Qt.WindowModality.WindowModal)
         self.setModal(True)
-        self.setWindowFlag(Qt.WindowType.WindowCloseButtonHint, False)
+        self.setWindowFlag(Qt.WindowType.WindowCloseButtonHint, True)
         self.setWindowFlag(Qt.WindowType.WindowContextHelpButtonHint, False)
         self.setMinimumWidth(420)
         self.setMaximumWidth(520)
@@ -154,11 +164,17 @@ class ModelLoadingDialog(QDialog):
         if self._allow_close:
             super().closeEvent(event)
             return
-        event.ignore()
+        # Closing preparation means exiting the app, not dismissing its modal
+        # guard and leaving an unusable window behind.
+        self._allow_close = True
+        event.accept()
+        self.exit_requested.emit()
 
 
 class MainWindow(QMainWindow):
     """Compose widgets and reflect state emitted by MainViewModel."""
+
+    shutdown_started = Signal()
 
     def __init__(
         self,
@@ -187,6 +203,7 @@ class MainWindow(QMainWindow):
         self._license_valid = False
         self._license_popup: QMessageBox | None = None
         self._model_loading_popup: ModelLoadingDialog | None = None
+        self._closing = False
         self._engine_voices: list[VoiceInfo] = []
         self._cloned_voice_artifacts: dict[str, str] = {}
         self._clone_enrollment_pending = False
@@ -409,7 +426,18 @@ class MainWindow(QMainWindow):
         self._sidebar = QFrame(self)
         self._sidebar.setObjectName("sidebar")
         self._sidebar.setFixedWidth(THEME.sidebar_width)
-        self.sidebar_brand = QLabel("GPHI TTS", self._sidebar)
+        self.sidebar_logo = QLabel(self._sidebar)
+        self.sidebar_logo.setObjectName("sidebarLogo")
+        self.sidebar_logo.setFixedSize(40, 32)
+        self.sidebar_logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.sidebar_logo.setPixmap(
+            QPixmap(str(_company_logo_path())).scaled(
+                40, 32,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+        )
+        self.sidebar_brand = QLabel("TTS", self._sidebar)
         self.sidebar_brand.setObjectName("sidebarBrand")
         self.sidebar_brand.setProperty("role", "section")
         self.sidebar_brand.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -463,7 +491,13 @@ class MainWindow(QMainWindow):
         brand_layout = QVBoxLayout()
         brand_layout.setContentsMargins(0, 0, 0, 0)
         brand_layout.setSpacing(THEME.space_1)
-        brand_layout.addWidget(self.sidebar_brand)
+        brand_heading = QHBoxLayout()
+        brand_heading.setSpacing(THEME.space_2)
+        brand_heading.addStretch()
+        brand_heading.addWidget(self.sidebar_logo)
+        brand_heading.addWidget(self.sidebar_brand)
+        brand_heading.addStretch()
+        brand_layout.addLayout(brand_heading)
         brand_layout.addWidget(self.sidebar_tagline)
         sidebar_layout = QVBoxLayout(self._sidebar)
         sidebar_layout.setContentsMargins(
@@ -529,7 +563,7 @@ class MainWindow(QMainWindow):
         # Model loading is a licensed operation.  Keep this guard here (in
         # addition to the startup check) because main.py invokes this method
         # after the window is shown and it must be safe to call unconditionally.
-        if not self._license_valid:
+        if self._closing or not self._license_valid:
             return
         self._view_model.initialize()
 
@@ -847,7 +881,7 @@ class MainWindow(QMainWindow):
             return
         popup = QMessageBox(
             QMessageBox.Icon.Warning,
-            "GPHI TTS · Bản quyền",
+            "SI TTS · Bản quyền",
             "Vui lòng nhập mã kích hoạt ứng dụng.\n"
             "Vui lòng kích hoạt mã ở trang Thanh toán.",
             QMessageBox.StandardButton.Ok,
@@ -863,11 +897,14 @@ class MainWindow(QMainWindow):
         self._license_popup = None
 
     def _show_model_loading_popup(self) -> None:
+        if self._closing:
+            return
         if self._model_loading_popup is not None:
             self._model_loading_popup.raise_()
             self._model_loading_popup.activateWindow()
             return
         popup = ModelLoadingDialog(self)
+        popup.exit_requested.connect(self.close)
         popup.finished.connect(self._model_loading_popup_finished)
         self._model_loading_popup = popup
         popup.open()
@@ -1076,6 +1113,12 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event: QCloseEvent) -> None:
         """Release worker and engine resources before closing."""
 
+        if self._closing:
+            event.accept()
+            return
+        self._closing = True
+        self.shutdown_started.emit()
+        self.hide()
         if self._license_popup is not None:
             self._license_popup.close()
         if self._model_loading_popup is not None:

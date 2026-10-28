@@ -1,9 +1,9 @@
-GPHI-TTS OPEN-SOURCE RELEASE CHECK
+SI-TTS OPEN-SOURCE RELEASE CHECK
 =================================
 
 Purpose
 -------
-This directory is designed to be copied to packaging/licenses in the GPHI-TTS
+This directory is designed to be copied to packaging/licenses in the SI-TTS
 repository. packaging/vntts.spec already copies that directory into the final
 PyInstaller distribution.
 
