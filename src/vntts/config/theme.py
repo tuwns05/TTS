@@ -342,6 +342,15 @@ def build_stylesheet(t: Theme = THEME) -> str:
     QPushButton[variant="secondary"]:hover {{
         background: rgba(0, 0, 0, 0.03);
     }}
+    QPushButton#clearTextButton {{
+        padding: 2px 8px;
+        background: {t.panel_bg};
+        border: 1px solid {t.border_strong};
+    }}
+    QPushButton#clearTextButton:hover {{
+        background: {t.accent_soft};
+        border-color: {t.accent};
+    }}
     QPushButton[variant="ghost"] {{
         background: transparent;
         color: {t.text_secondary};
@@ -401,6 +410,10 @@ def build_stylesheet(t: Theme = THEME) -> str:
         border-radius: {t.radius_sm}px;
         padding: {t.space_2}px {t.space_3}px;
         selection-background-color: {t.accent_soft};
+    }}
+    QTextEdit, QPlainTextEdit {{
+        selection-background-color: {t.accent_pressed};
+        selection-color: {t.text_on_accent};
     }}
     QComboBox {{
         padding-right: {t.space_6}px;

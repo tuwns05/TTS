@@ -1024,6 +1024,9 @@ class MainWindow(QMainWindow):
         self.model_settings_page.set_loading(state == "loading_engine")
         self.text_input.open_file_button.setEnabled(not busy)
         self.text_input.editor.setReadOnly(state == "importing_document")
+        self.text_input.clear_text_button.setEnabled(
+            state != "importing_document" and bool(self.text_input.text())
+        )
         self._refresh_actions()
 
     def _show_error(self, message: str) -> None:

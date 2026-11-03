@@ -10,6 +10,7 @@ import numpy as np
 from PySide6.QtCore import QObject, QRectF, QSize, Qt, QThreadPool, Signal
 from PySide6.QtGui import QColor, QMouseEvent, QPainter, QPaintEvent, QPen
 from PySide6.QtWidgets import (
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QPlainTextEdit,
@@ -778,6 +779,12 @@ class TextInputWidget(QWidget):
         self.open_file_button.setProperty("variant", "secondary")
         self.open_file_button.setAccessibleName("Mở tệp văn bản")
         self.open_file_button.setToolTip("Nhập nội dung từ TXT, SRT, DOCX hoặc PDF")
+        self.clear_text_button = QPushButton("Xóa hết", self)
+        self.clear_text_button.setObjectName("clearTextButton")
+        self.clear_text_button.setProperty("variant", "secondary")
+        self.clear_text_button.setFixedSize(68, 26)
+        self.clear_text_button.setAccessibleName("Xóa toàn bộ văn bản")
+        self.clear_text_button.setToolTip("Xóa toàn bộ văn bản · Ctrl+Z để hoàn tác")
 
         title = QLabel("Nội dung", self)
         title.setObjectName("sectionTitle")
@@ -786,18 +793,23 @@ class TextInputWidget(QWidget):
         helper.setObjectName("helperText")
         helper.setProperty("role", "secondary")
         helper.setWordWrap(True)
-        header = QHBoxLayout()
-        header.addWidget(title)
-        header.addStretch()
-        header.addWidget(self.open_file_button)
-        header.addWidget(self.character_count)
+        header = QGridLayout()
+        header.setColumnStretch(0, 1)
+        header.setVerticalSpacing(THEME.space_1)
+        header.addWidget(title, 0, 0)
+        header.addWidget(self.open_file_button, 0, 1)
+        header.addWidget(self.character_count, 0, 2)
+        header.addWidget(helper, 1, 0)
+        header.addWidget(
+            self.clear_text_button, 1, 1, 1, 2, Qt.AlignmentFlag.AlignRight
+        )
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(THEME.space_2)
         layout.addLayout(header)
-        layout.addWidget(helper)
         layout.addWidget(self.editor)
         self.open_file_button.clicked.connect(self.open_file_requested)
+        self.clear_text_button.clicked.connect(self._clear_text)
         self.editor.textChanged.connect(self._on_text_changed)
         self._on_text_changed()
 
@@ -815,4 +827,14 @@ class TextInputWidget(QWidget):
         value = self.text()
         formatted_count = f"{len(value):,}".replace(",", ".")
         self.character_count.setText(f"{formatted_count} ký tự")
+        self.clear_text_button.setEnabled(bool(value) and not self.editor.isReadOnly())
         self.text_changed.emit(value)
+
+    def _clear_text(self) -> None:
+        """Clear the text while allowing the user to undo the deletion."""
+
+        if self.editor.isReadOnly():
+            return
+        self.editor.selectAll()
+        self.editor.insertPlainText("")
+        self.editor.setFocus()
