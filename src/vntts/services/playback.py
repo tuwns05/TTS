@@ -103,6 +103,14 @@ class PlaybackService(QObject):
 
         if self._current_result is None or self._wav_data is None:
             raise PlaybackError("Chưa có audio để xuất.")
+        return self.export_result(self._current_result, destination, audio_format)
+
+    @staticmethod
+    def export_result(
+        result: SynthesisResult, destination: str | Path, audio_format: str
+    ) -> Path:
+        """Export a retained clip without accessing Qt playback state."""
+
         normalized_format = audio_format.lower()
         if normalized_format not in {"wav", "mp3"}:
             raise PlaybackError(f"Định dạng audio không được hỗ trợ: {audio_format}")
@@ -112,9 +120,9 @@ class PlaybackService(QObject):
             output_path = output_path.with_suffix(f".{normalized_format}")
         try:
             data = (
-                bytes(self._wav_data)
+                PlaybackService._encode_wav(result)
                 if normalized_format == "wav"
-                else self._encode_mp3(self._current_result)
+                else PlaybackService._encode_mp3(result)
             )
             output_path.write_bytes(data)
         except PlaybackError:

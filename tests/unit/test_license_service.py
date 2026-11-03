@@ -25,11 +25,13 @@ SAMPLE_LICENSE_KEY = (
     "3I6qZZyG8mlUP9xe_iTbOhMx4Lm4X2sOPOcspFbFJCg"
 )
 _TEST_PRIVATE_KEY = "4BI0ollUUzAioL_OdBEiq6at8zDb58ZbEhD4UtkgMgk"
+_TEST_PUBLIC_KEY = "KpKH0Ng-3UJLEbEktxTBcWn4p_V1smDJ5K5kkhbbf4A"
 _VALID_NOW = datetime(2026, 8, 20, tzinfo=UTC)
 
 
 def _service(mac: str = "F0:68:E3:C4:D1:A1") -> LicenseService:
     return LicenseService(
+        public_key=_TEST_PUBLIC_KEY,
         mac_provider=lambda: mac,
         now_provider=lambda: _VALID_NOW,
     )
@@ -168,11 +170,31 @@ def test_accepts_lifetime_plan_payload() -> None:
     assert result.plan == "lifetime"
 
 
+@pytest.mark.parametrize("plan", ["yearly", "lifetime"])
+def test_accepts_signed_key_without_customer_name(plan: str) -> None:
+    key = _signed_key({
+        "v": 1,
+        "mac": "F0:68:E3:C4:D1:A1",
+        "plan": plan,
+        "paid_at": "2026-08-19T14:48:00+07:00",
+        "expires_at": "2027-08-19T14:48:00+07:00",
+    })
+
+    result = _service().activate(key)
+
+    assert result.activated
+    assert result.customer_name is None
+    assert result.plan == plan
+    with pytest.raises(ValidationError, match="không thuộc thiết bị này"):
+        _service("00:11:22:33:44:55").activate(key)
+
+
 def test_persists_only_key_and_last_seen_then_revalidates(
     tmp_path: Path,
 ) -> None:
     service = LicenseService(
         tmp_path,
+        public_key=_TEST_PUBLIC_KEY,
         mac_provider=lambda: "F0:68:E3:C4:D1:A1",
         now_provider=lambda: _VALID_NOW,
     )
@@ -188,6 +210,7 @@ def test_persists_only_key_and_last_seen_then_revalidates(
 
     restarted = LicenseService(
         tmp_path,
+        public_key=_TEST_PUBLIC_KEY,
         mac_provider=lambda: "F0:68:E3:C4:D1:A1",
         now_provider=lambda: _VALID_NOW + timedelta(hours=1),
     )
@@ -204,6 +227,7 @@ def test_clock_rollback_locks_license_without_reducing_last_seen(
     current = [_VALID_NOW]
     service = LicenseService(
         tmp_path,
+        public_key=_TEST_PUBLIC_KEY,
         mac_provider=lambda: "F0:68:E3:C4:D1:A1",
         now_provider=lambda: current[0],
     )
@@ -225,6 +249,7 @@ def test_expiration_is_detected_during_next_saved_license_check(
     current = [datetime(2027, 8, 19, 7, 47, tzinfo=UTC)]
     service = LicenseService(
         tmp_path,
+        public_key=_TEST_PUBLIC_KEY,
         mac_provider=lambda: "F0:68:E3:C4:D1:A1",
         now_provider=lambda: current[0],
     )

@@ -1,12 +1,10 @@
-"""Payment request and placeholder license activation page."""
+"""Offline license activation and information page."""
 
 from __future__ import annotations
 
-import re
-from collections.abc import Mapping
 from datetime import datetime
 
-from PySide6.QtCore import QThreadPool, Signal
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
@@ -25,17 +23,8 @@ from vntts.services.license_service import (
     LicenseActivationResult,
     LicenseService,
 )
-from vntts.services.payment_service import (
-    PaymentRequest,
-    PaymentResponse,
-    PaymentService,
-)
-from vntts.ui.controls import ChevronComboBox
 from vntts.utils.exceptions import ValidationError
-from vntts.utils.machine_info import get_mac_address
-from vntts.utils.worker import TaskWorker
 
-_EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 _PLAN_LABELS = {
     "monthly": "1 tháng",
     "quarterly": "3 tháng",
@@ -46,39 +35,30 @@ _PLAN_LABELS = {
 
 
 class PaymentPage(QWidget):
-    """Collect payment details and expose future license activation."""
+    """Activate a license and display its verified details."""
 
     license_activated = Signal(object)
 
     def __init__(
         self,
-        payment_service: PaymentService,
         license_service: LicenseService,
         *,
-        plan_prices_vnd: Mapping[str, int],
-        mac_address: str | None = None,
-        thread_pool: QThreadPool | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self.setObjectName("paymentPage")
-        self._payment_service = payment_service
         self._license_service = license_service
-        self._plan_prices_vnd = dict(plan_prices_vnd)
-        self._mac_address = mac_address or get_mac_address()
-        self._thread_pool = thread_pool or QThreadPool.globalInstance()
-        self._payment_worker: TaskWorker | None = None
 
-        page_title = QLabel("Thanh toán / Bản quyền", self)
+        page_title = QLabel("Kích hoạt / Bản quyền", self)
         page_title.setProperty("role", "title")
         self.payment_help_button = QPushButton("Hướng dẫn", self)
         self.payment_help_button.setObjectName("paymentHelpButton")
         self.payment_help_button.setProperty("variant", "help")
         self.payment_help_button.setAccessibleName(
-            "Mở hướng dẫn thanh toán và kích hoạt ứng dụng"
+            "Mở hướng dẫn kích hoạt ứng dụng"
         )
         self.payment_help_button.setToolTip(
-            "Xem hướng dẫn thanh toán và nhập mã kích hoạt"
+            "Xem hướng dẫn nhập mã kích hoạt"
         )
         self.payment_help_button.setFixedHeight(30)
         page_header = QHBoxLayout()
@@ -87,81 +67,6 @@ class PaymentPage(QWidget):
         page_header.addWidget(page_title)
         page_header.addStretch()
         page_header.addWidget(self.payment_help_button)
-
-        self.payment_card = self._card()
-        payment_layout = self._card_layout(self.payment_card)
-        payment_title = QLabel("Yêu cầu thanh toán", self.payment_card)
-        payment_title.setProperty("role", "section")
-        payment_hint = QLabel(
-            "Gửi thông tin để nhận hướng dẫn thanh toán qua email.",
-            self.payment_card,
-        )
-        payment_hint.setProperty("role", "secondary")
-        payment_layout.addWidget(payment_title)
-        payment_layout.addWidget(payment_hint)
-        payment_layout.addWidget(self._divider(self.payment_card))
-
-        form = QGridLayout()
-        form.setContentsMargins(0, 0, 0, 0)
-        form.setHorizontalSpacing(THEME.space_3)
-        form.setVerticalSpacing(THEME.space_2)
-
-        self.plan_combo = ChevronComboBox(self.payment_card)
-        self.plan_combo.setObjectName("paymentPlanCombo")
-        self.plan_combo.setAccessibleName("Gói thanh toán")
-        self.plan_combo.addItem("Chọn gói", None)
-        for plan_id, label in _PLAN_LABELS.items():
-            price = self._plan_prices_vnd[plan_id]
-            self.plan_combo.addItem(
-                f"{label} · {self._format_vnd(price)}",
-                plan_id,
-            )
-        self.plan_price_label = QLabel(self.payment_card)
-        self.plan_price_label.setObjectName("paymentPlanPrice")
-        self.plan_price_label.setProperty("role", "caption")
-        self.plan_price_label.setText("Chọn gói để xem giá.")
-        plan_selector = QWidget(self.payment_card)
-        plan_selector_layout = QVBoxLayout(plan_selector)
-        plan_selector_layout.setContentsMargins(0, 0, 0, 0)
-        plan_selector_layout.setSpacing(THEME.space_1)
-        plan_selector_layout.addWidget(self.plan_combo)
-        plan_selector_layout.addWidget(self.plan_price_label)
-
-        self.name_input = QLineEdit(self.payment_card)
-        self.name_input.setObjectName("paymentNameInput")
-        self.name_input.setPlaceholderText("Nguyễn Văn A")
-        self.name_input.setAccessibleName("Họ và tên")
-
-        self.email_input = QLineEdit(self.payment_card)
-        self.email_input.setObjectName("paymentEmailInput")
-        self.email_input.setPlaceholderText("example@gmail.com")
-        self.email_input.setAccessibleName("Email")
-
-        self._add_field(form, 0, "Chọn gói", plan_selector)
-        self._add_field(form, 1, "Họ và tên", self.name_input)
-        self._add_field(form, 2, "Email", self.email_input)
-        form.setColumnStretch(1, 1)
-        payment_layout.addLayout(form)
-
-        self.send_button = QPushButton(
-            "Gửi yêu cầu thanh toán",
-            self.payment_card,
-        )
-        self.send_button.setObjectName("sendPaymentRequestButton")
-        self.send_button.setProperty("variant", "primary")
-        self.send_button.setAccessibleName("Gửi yêu cầu thanh toán")
-
-        self.payment_status_label = QLabel(self.payment_card)
-        self.payment_status_label.setObjectName("paymentStatusLabel")
-        self.payment_status_label.setWordWrap(True)
-        self.payment_status_label.hide()
-
-        payment_actions = QHBoxLayout()
-        payment_actions.setContentsMargins(0, 0, 0, 0)
-        payment_actions.addStretch()
-        payment_actions.addWidget(self.send_button)
-        payment_layout.addWidget(self.payment_status_label)
-        payment_layout.addLayout(payment_actions)
 
         self.license_card = self._card()
         license_layout = self._card_layout(self.license_card)
@@ -224,8 +129,11 @@ class PaymentPage(QWidget):
             ("Hết hạn", self.license_expires_at_value),
         )
         for row, (label, value_widget) in enumerate(license_values, start=1):
+            field_label = self._field_label(label, self.license_info_widget)
+            if value_widget is self.license_customer_value:
+                self.license_customer_label = field_label
             license_info_layout.addWidget(
-                self._field_label(label, self.license_info_widget),
+                field_label,
                 row,
                 0,
             )
@@ -237,7 +145,6 @@ class PaymentPage(QWidget):
         cards = QVBoxLayout()
         cards.setContentsMargins(0, 0, 0, 0)
         cards.setSpacing(THEME.space_3)
-        cards.addWidget(self.payment_card)
         cards.addWidget(self.license_card)
         cards_container = QWidget(self)
         cards_container.setMaximumWidth(THEME.content_reading_width)
@@ -266,23 +173,15 @@ class PaymentPage(QWidget):
         layout.addLayout(content_row)
         layout.addStretch()
 
-        self.plan_combo.currentIndexChanged.connect(self._update_plan_price)
-        self.send_button.clicked.connect(self._submit_payment_request)
         self.activate_button.clicked.connect(self._activate_license)
         self.payment_help_button.clicked.connect(self._show_payment_help)
 
     def _show_payment_help(self) -> None:
-        """Explain payment submission and offline license activation."""
+        """Explain offline license activation."""
 
         QMessageBox.information(
             self,
-            "Hướng dẫn thanh toán và kích hoạt",
-            "Thanh toán\n"
-            "1. Chọn gói đang được hệ thống hỗ trợ.\n"
-            "2. Nhập đúng họ tên và email dùng để nhận hướng dẫn thanh toán.\n"
-            "3. Bấm 'Gửi yêu cầu thanh toán'.\n"
-            "4. Làm theo hướng dẫn được gửi đến email để hoàn tất thanh toán "
-            "và nhận mã kích hoạt.\n\n"
+            "Hướng dẫn kích hoạt",
             "Kích hoạt ứng dụng\n"
             "1. Sao chép đầy đủ mã kích hoạt đã nhận.\n"
             "2. Dán mã vào ô 'Mã kích hoạt' và bấm 'Kích hoạt'.\n"
@@ -356,96 +255,6 @@ class PaymentPage(QWidget):
         label.setObjectName("fieldLabel")
         return label
 
-    def _add_field(
-        self,
-        layout: QGridLayout,
-        row: int,
-        label: str,
-        widget: QWidget,
-    ) -> None:
-        layout.addWidget(self._field_label(label, self.payment_card), row, 0)
-        layout.addWidget(widget, row, 1)
-
-    def _update_plan_price(self) -> None:
-        plan = self.plan_combo.currentData()
-        if plan not in self._plan_prices_vnd:
-            self.plan_price_label.setText("Chọn gói để xem giá.")
-            return
-        self.plan_price_label.setText(
-            f"Giá gói: {self._format_vnd(self._plan_prices_vnd[str(plan)])}"
-        )
-
-    @staticmethod
-    def _format_vnd(price: int) -> str:
-        return f"{price:,}".replace(",", ".") + " VNĐ"
-
-    def _submit_payment_request(self) -> None:
-        try:
-            payment = self._validated_payment_request()
-        except ValidationError as exc:
-            self._show_status(self.payment_status_label, str(exc), "error")
-            return
-
-        self._set_payment_loading(True)
-        worker = TaskWorker(self._payment_service.request_payment, payment)
-        self._payment_worker = worker
-        worker.signals.result.connect(self._payment_succeeded)
-        worker.signals.error.connect(self._payment_failed)
-        worker.signals.finished.connect(self._payment_finished)
-        self._thread_pool.start(worker)
-
-    def _validated_payment_request(self) -> PaymentRequest:
-        name = self.name_input.text().strip()
-        email = self.email_input.text().strip()
-        plan = self.plan_combo.currentData()
-        if not name:
-            raise ValidationError("Vui lòng nhập họ và tên.")
-        if not email:
-            raise ValidationError("Vui lòng nhập email.")
-        if not _EMAIL_PATTERN.fullmatch(email):
-            raise ValidationError("Email không đúng định dạng.")
-        if plan not in _PLAN_LABELS:
-            raise ValidationError("Vui lòng chọn gói thanh toán.")
-        return PaymentRequest(
-            name=name,
-            email=email,
-            plan=str(plan),
-            price=self._plan_prices_vnd[str(plan)],
-            mac=self._mac_address,
-        )
-
-    def _payment_succeeded(self, response: object) -> None:
-        if not isinstance(response, PaymentResponse):
-            self._payment_failed("Phản hồi thanh toán không hợp lệ.")
-            return
-        self._show_status(
-            self.payment_status_label,
-            response.message,
-            "success",
-        )
-
-    def _payment_failed(self, message: str) -> None:
-        self._show_status(self.payment_status_label, message, "error")
-
-    def _payment_finished(self) -> None:
-        self._set_payment_loading(False)
-        self._payment_worker = None
-
-    def _set_payment_loading(self, loading: bool) -> None:
-        self.send_button.setEnabled(not loading)
-        self.send_button.setText(
-            "Đang gửi..." if loading else "Gửi yêu cầu thanh toán"
-        )
-        self.plan_combo.setEnabled(not loading)
-        self.name_input.setEnabled(not loading)
-        self.email_input.setEnabled(not loading)
-        if loading:
-            self._show_status(
-                self.payment_status_label,
-                "Đang gửi yêu cầu thanh toán...",
-                "busy",
-            )
-
     def _activate_license(self) -> None:
         self._clear_license_information()
         key = self.license_key_input.text().strip()
@@ -487,6 +296,9 @@ class PaymentPage(QWidget):
             _PLAN_LABELS.get(result.plan or "", "")
         )
         self.license_customer_value.setText(result.customer_name or "")
+        has_customer = bool(result.customer_name and result.customer_name.strip())
+        self.license_customer_label.setVisible(has_customer)
+        self.license_customer_value.setVisible(has_customer)
         self.license_paid_at_value.setText(
             self._format_license_date(result.paid_at)
         )

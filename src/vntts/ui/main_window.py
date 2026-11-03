@@ -1,6 +1,8 @@
 """Desktop workspace for the Vietnamese text-to-speech workflow."""
 
-from PySide6.QtCore import QRectF, Qt, Signal
+from pathlib import Path
+
+from PySide6.QtCore import QRectF, Qt, QThreadPool, Signal
 from PySide6.QtGui import (
     QCloseEvent,
     QColor,
@@ -59,7 +61,7 @@ from vntts.ui.settings_panel import (
 )
 from vntts.ui.voice_clone_view import VoiceClonePage
 from vntts.utils.exceptions import PlaybackError
-from vntts.utils.machine_info import get_mac_address
+from vntts.utils.worker import TaskWorker
 
 
 class LicenseNavButton(QPushButton):
@@ -171,6 +173,38 @@ class ModelLoadingDialog(QDialog):
         self.exit_requested.emit()
 
 
+class ExportProgressDialog(QDialog):
+    """Keep export progress visible until the file has been written."""
+
+    def __init__(self, audio_format: str, parent: QWidget) -> None:
+        super().__init__(parent)
+        self.setObjectName("exportProgressDialog")
+        self.setWindowTitle("Đang xuất file")
+        self.setWindowModality(Qt.WindowModality.WindowModal)
+        self.setWindowFlag(Qt.WindowType.WindowCloseButtonHint, False)
+        self.setWindowFlag(Qt.WindowType.WindowContextHelpButtonHint, False)
+        self.setMinimumWidth(380)
+        layout = QVBoxLayout(self)
+        message = QLabel(
+            f"Đang xuất file {audio_format.upper()}… Vui lòng chờ.\n"
+            "File âm thanh lớn có thể mất nhiều thời gian hơn.",
+            self,
+        )
+        message.setWordWrap(True)
+        layout.addWidget(message)
+        progress = QProgressBar(self)
+        progress.setRange(0, 0)
+        progress.setTextVisible(False)
+        progress.setAccessibleName("Đang xuất file")
+        layout.addWidget(progress)
+
+    def reject(self) -> None:
+        """Keep the progress visible when Escape is pressed."""
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        event.ignore()
+
+
 class MainWindow(QMainWindow):
     """Compose widgets and reflect state emitted by MainViewModel."""
 
@@ -203,6 +237,8 @@ class MainWindow(QMainWindow):
         self._license_valid = False
         self._license_popup: QMessageBox | None = None
         self._model_loading_popup: ModelLoadingDialog | None = None
+        self._export_popup: ExportProgressDialog | None = None
+        self._export_worker: TaskWorker | None = None
         self._closing = False
         self._engine_voices: list[VoiceInfo] = []
         self._cloned_voice_artifacts: dict[str, str] = {}
@@ -395,10 +431,7 @@ class MainWindow(QMainWindow):
         self._model_settings_scroll_area.setFrameShape(QFrame.Shape.NoFrame)
         self._model_settings_scroll_area.setWidget(self.model_settings_page)
         self.payment_page = PaymentPage(
-            self._payment_service,
             self._license_service,
-            plan_prices_vnd=settings.payment.plan_prices_vnd,
-            mac_address=get_mac_address(),
             parent=self,
         )
         self._payment_scroll_area = QScrollArea(self)
@@ -460,7 +493,7 @@ class MainWindow(QMainWindow):
         self.nav_clone_button.setObjectName("navCloneButton")
         self.nav_settings_button = LicenseNavButton("Cài đặt", self._sidebar)
         self.nav_settings_button.setObjectName("navSettingsButton")
-        self.nav_payment_button = QPushButton("Thanh toán", self._sidebar)
+        self.nav_payment_button = QPushButton("Kích hoạt", self._sidebar)
         self.nav_payment_button.setObjectName("navPaymentButton")
         self.nav_contact_button = QPushButton("Liên hệ", self._sidebar)
         self.nav_contact_button.setObjectName("navContactButton")
@@ -883,7 +916,7 @@ class MainWindow(QMainWindow):
             QMessageBox.Icon.Warning,
             "SI TTS · Bản quyền",
             "Vui lòng nhập mã kích hoạt ứng dụng.\n"
-            "Vui lòng kích hoạt mã ở trang Thanh toán.",
+            "Vui lòng kích hoạt mã ở trang Kích hoạt.",
             QMessageBox.StandardButton.Ok,
             self,
         )
@@ -1028,6 +1061,8 @@ class MainWindow(QMainWindow):
         self._refresh_actions()
 
     def _export_audio(self, audio_format: str) -> None:
+        if self._export_worker is not None:
+            return
         upper_format = audio_format.upper()
         destination, _selected_filter = QFileDialog.getSaveFileName(
             self,
@@ -1037,13 +1072,39 @@ class MainWindow(QMainWindow):
         )
         if not destination:
             return
-        try:
-            output_path = self._playback.export_audio(destination, audio_format)
-        except PlaybackError as exc:
-            self._show_playback_error(str(exc))
+        result = self._playback.current_result
+        if result is None:
+            self._show_playback_error("Chưa có audio để xuất.")
             return
+        worker = TaskWorker(
+            PlaybackService.export_result, result, destination, audio_format
+        )
+        self._export_worker = worker
+        worker.signals.result.connect(self._export_succeeded)
+        worker.signals.error.connect(self._export_failed)
+        worker.signals.finished.connect(self._export_finished)
+        self.status_label.setText(f"●  Đang xuất file {upper_format}… Vui lòng chờ.")
+        self._set_status_style("busy")
+        self._refresh_actions()
+        self._export_popup = ExportProgressDialog(audio_format, self)
+        self._export_popup.show()
+        QThreadPool.globalInstance().start(worker)
+
+    def _export_succeeded(self, output_path: Path) -> None:
         self.status_label.setText(f"●  Đã xuất {output_path.name}")
         self._set_status_style("success")
+
+    def _export_failed(self, message: str) -> None:
+        self.status_label.setText(f"●  Không thể xuất file: {message}")
+        self._set_status_style("error")
+
+    def _export_finished(self) -> None:
+        if self._export_popup is not None:
+            self._export_popup.accept()
+            self._export_popup.deleteLater()
+            self._export_popup = None
+        self._export_worker = None
+        self._refresh_actions()
 
     def _play(self) -> None:
         try:
@@ -1099,8 +1160,8 @@ class MainWindow(QMainWindow):
         )
         self.synthesize_button.setEnabled(ready)
         has_audio = self._playback.has_audio
-        self.export_wav_button.setEnabled(has_audio)
-        self.export_mp3_button.setEnabled(has_audio)
+        self.export_wav_button.setEnabled(has_audio and self._export_worker is None)
+        self.export_mp3_button.setEnabled(has_audio and self._export_worker is None)
 
     def resizeEvent(self, event: QResizeEvent) -> None:
         """Reflow cards when the window crosses a responsive breakpoint."""
@@ -1113,6 +1174,9 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event: QCloseEvent) -> None:
         """Release worker and engine resources before closing."""
 
+        if self._export_worker is not None:
+            event.ignore()
+            return
         if self._closing:
             event.accept()
             return

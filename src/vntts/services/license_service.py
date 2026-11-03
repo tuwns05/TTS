@@ -29,7 +29,6 @@ LICENSE_REQUIRED_MESSAGE = "Vui lòng xác thực mã kích hoạt cho thiết b
 _STATE_FILENAME = "license.json"
 _REQUIRED_FIELDS = {
     "v",
-    "customer_name",
     "mac",
     "plan",
     "paid_at",
@@ -203,7 +202,11 @@ class LicenseService:
             LicenseActivationResult(
                 activated=True,
                 message="Xác thực mã kích hoạt thành công.",
-                customer_name=payload["customer_name"],
+                customer_name=(
+                    payload.get("customer_name")
+                    if isinstance(payload.get("customer_name"), str)
+                    else None
+                ),
                 plan=payload["plan"],
                 paid_at=payload["paid_at"],
                 expires_at=payload["expires_at"],
@@ -316,7 +319,7 @@ class LicenseService:
             raise LicenseValidationError(
                 "Mã kích hoạt không hợp lệ.", LicenseStatus.INVALID
             )
-        for field in ("customer_name", "mac", "paid_at", "expires_at"):
+        for field in ("mac", "paid_at", "expires_at"):
             value = payload[field]
             if not isinstance(value, str) or not value.strip():
                 raise LicenseValidationError(

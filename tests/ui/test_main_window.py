@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from threading import Event, get_ident
 from types import SimpleNamespace
 
 import numpy as np
@@ -37,6 +38,8 @@ from vntts.services.license_service import (
     LicenseStatus,
 )
 from vntts.services.payment_service import PaymentResponse
+from vntts.services.playback import PlaybackService
+from vntts.utils.exceptions import PlaybackError
 from vntts.services.synthesis import SynthesizeSpeech
 from vntts.services.voice_profiles import VoiceProfileStore
 from vntts.ui.compose_view import DEFAULT_DEMO_TEXT, MainViewModel
@@ -188,7 +191,7 @@ def test_unlicensed_startup_locks_feature_pages_and_redirects_to_payment(
     assert popup.objectName() == "licenseWarningPopup"
     assert popup.text() == (
         "Vui lòng nhập mã kích hoạt ứng dụng.\n"
-        "Vui lòng kích hoạt mã ở trang Thanh toán."
+        "Vui lòng kích hoạt mã ở trang Kích hoạt."
     )
 
     window.nav_compose_button.click()
@@ -442,8 +445,8 @@ def test_contextual_help_buttons_open_guides(
     assert opened_guides[2][0] == "Hướng dẫn cài đặt thiết bị"
     assert "Tự động" in opened_guides[2][1]
     assert "Áp dụng" in opened_guides[2][1]
-    assert opened_guides[3][0] == "Hướng dẫn thanh toán và kích hoạt"
-    assert "Gửi yêu cầu thanh toán" in opened_guides[3][1]
+    assert opened_guides[3][0] == "Hướng dẫn kích hoạt"
+    assert "Gửi yêu cầu thanh toán" not in opened_guides[3][1]
     assert "Mã kích hoạt" in opened_guides[3][1]
     assert "MAC" not in opened_guides[3][1]
 
@@ -867,7 +870,7 @@ def test_settings_page_only_exposes_device_selection(qtbot, settings: Settings) 
     ] == ["auto", "cuda", "cpu"]
 
 
-def test_payment_page_validates_and_uses_separate_services(
+def test_payment_page_only_activates_license(
     qtbot,
     settings: Settings,
 ) -> None:  # type: ignore[no-untyped-def]
@@ -928,7 +931,7 @@ def test_payment_page_validates_and_uses_separate_services(
     assert window.page_stack.currentIndex() == 3
     assert window.nav_payment_button.isChecked()
     assert not window.nav_contact_button.isChecked()
-    assert page.payment_card.maximumWidth() == THEME.content_reading_width
+    assert page.license_card.maximumWidth() == THEME.content_reading_width
     assert page.license_card.findChild(
         QLabel,
         "licenseSectionTitle",
@@ -942,9 +945,9 @@ def test_payment_page_validates_and_uses_separate_services(
     )
     assert (
         abs(
-            page.payment_card.mapTo(
+            page.license_card.mapTo(
                 page,
-                page.payment_card.rect().center(),
+                page.license_card.rect().center(),
             ).x()
             - page.rect().center().x()
         )
@@ -952,67 +955,11 @@ def test_payment_page_validates_and_uses_separate_services(
     )
     assert page.findChild(QLineEdit, "paymentMacAddress") is None
     assert page.findChild(QPushButton, "copyMacButton") is None
-    assert [
-        page.plan_combo.itemData(index)
-        for index in range(page.plan_combo.count())
-    ] == [None, "monthly", "quarterly", "semiannual", "yearly", "lifetime"]
-    assert [
-        page.plan_combo.itemText(index)
-        for index in range(1, page.plan_combo.count())
-    ] == [
-        "1 tháng · 99.000 VNĐ",
-        "3 tháng · 249.000 VNĐ",
-        "6 tháng · 449.000 VNĐ",
-        "1 năm · 799.000 VNĐ",
-        "Vĩnh viễn · 1.999.000 VNĐ",
-    ]
-    assert page.plan_price_label.text() == "Chọn gói để xem giá."
-
-    page.send_button.click()
-    assert page.payment_status_label.text() == "Vui lòng nhập họ và tên."
-
-    page.name_input.setText("Nguyễn Văn A")
-    page.email_input.setText("email-khong-hop-le")
-    page.send_button.click()
-    assert page.payment_status_label.text() == "Email không đúng định dạng."
-
-    page.email_input.setText("example@gmail.com")
-    page.send_button.click()
-    assert page.payment_status_label.text() == "Vui lòng chọn gói thanh toán."
-
-    for plan, price in {
-        "monthly": 99_000,
-        "quarterly": 249_000,
-        "semiannual": 449_000,
-        "yearly": 799_000,
-        "lifetime": 1_999_000,
-    }.items():
-        page.plan_combo.setCurrentIndex(page.plan_combo.findData(plan))
-        payment = page._validated_payment_request()
-        assert payment.plan == plan
-        assert payment.price == price
-
-    page.plan_combo.setCurrentIndex(page.plan_combo.findData("monthly"))
-    assert page.plan_price_label.text() == "Giá gói: 99.000 VNĐ"
-    page.send_button.click()
-    assert not page.send_button.isEnabled()
-    assert page.send_button.text() == "Đang gửi..."
-    qtbot.waitUntil(
-        lambda: page.payment_status_label.text().startswith(
-            "Yêu cầu thanh toán đã được gửi."
-        ),
-        timeout=2_000,
-    )
-    qtbot.waitUntil(page.send_button.isEnabled, timeout=2_000)
-    assert len(payment_service.requests) == 1
-    assert payment_service.requests[0].to_payload() == {
-        "name": "Nguyễn Văn A",
-        "email": "example@gmail.com",
-        "plan": "monthly",
-        "price": 99_000,
-        "mac": payment_service.requests[0].mac,
-    }
-    assert len(payment_service.requests[0].mac.split(":")) == 6
+    assert page.findChild(QPushButton, "sendPaymentRequestButton") is None
+    assert page.findChild(QLineEdit, "paymentNameInput") is None
+    assert page.findChild(QLineEdit, "paymentEmailInput") is None
+    assert page.findChild(ChevronComboBox, "paymentPlanCombo") is None
+    assert payment_service.requests == []
 
     page.activate_button.click()
     assert page.license_status_label.text() == "Vui lòng nhập mã kích hoạt."
@@ -1236,19 +1183,70 @@ def test_export_buttons_choose_destination_after_synthesis(
     )
     exported: list[tuple[str, str]] = []
     monkeypatch.setattr(
-        window._playback,
-        "export_audio",
-        lambda path, audio_format: exported.append((path, audio_format)) or tmp_path / path,
+        PlaybackService,
+        "export_result",
+        lambda result, path, audio_format: exported.append((path, audio_format)) or tmp_path / path,
     )
 
     window.export_wav_button.click()
+    qtbot.waitUntil(lambda: window._export_worker is None, timeout=3_000)
     window.export_mp3_button.click()
+    qtbot.waitUntil(lambda: window._export_worker is None, timeout=3_000)
 
     assert exported == [
         (str(tmp_path / "speech.wav"), "wav"),
         (str(tmp_path / "speech.mp3"), "mp3"),
     ]
     assert "speech.mp3" in window.status_label.text()
+
+
+@pytest.mark.parametrize("fail", [False, True])
+def test_export_shows_progress_and_keeps_ui_responsive(
+    qtbot, settings: Settings, tmp_path, monkeypatch, fail: bool
+) -> None:  # type: ignore[no-untyped-def]
+    window, _ = _window(qtbot, settings)
+    clip = SynthesisResult(np.zeros(4_800, dtype=np.float32), 48_000)
+    window._playback.set_audio(clip)
+    window._refresh_actions()
+    monkeypatch.setattr(
+        QFileDialog, "getSaveFileName",
+        lambda *args, **kwargs: (str(tmp_path / "heavy.mp3"), "Audio"),
+    )
+    release = Event()
+    started = Event()
+    main_thread = get_ident()
+
+    def slow_export(result, path, audio_format):  # type: ignore[no-untyped-def]
+        assert get_ident() != main_thread
+        assert result is clip
+        started.set()
+        assert release.wait(5)
+        if fail:
+            raise PlaybackError("Không thể ghi file thử nghiệm.")
+        return tmp_path / "heavy.mp3"
+
+    monkeypatch.setattr(PlaybackService, "export_result", slow_export)
+    try:
+        window.export_mp3_button.click()
+        qtbot.waitUntil(started.is_set, timeout=2_000)
+        assert window._export_popup.isVisible()
+        assert "Đang xuất file MP3" in window.status_label.text()
+        assert not window.export_wav_button.isEnabled()
+        assert not window.export_mp3_button.isEnabled()
+        window._export_popup.reject()
+        assert window._export_popup.isVisible()
+        heartbeat = []
+        QTimer.singleShot(0, lambda: heartbeat.append(True))
+        qtbot.waitUntil(lambda: bool(heartbeat), timeout=1_000)
+    finally:
+        release.set()
+        qtbot.waitUntil(lambda: window._export_worker is None, timeout=3_000)
+
+    assert window._export_popup is None
+    assert window.export_wav_button.isEnabled()
+    assert window.export_mp3_button.isEnabled()
+    expected = "Không thể xuất file" if fail else "Đã xuất heavy.mp3"
+    assert expected in window.status_label.text()
 
 
 def test_player_uses_one_button_for_play_and_pause(qtbot, settings: Settings) -> None:  # type: ignore[no-untyped-def]
