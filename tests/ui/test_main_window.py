@@ -882,6 +882,7 @@ def test_settings_page_only_exposes_device_selection(qtbot, settings: Settings) 
 def test_payment_page_only_activates_license(
     qtbot,
     settings: Settings,
+    monkeypatch,
 ) -> None:  # type: ignore[no-untyped-def]
     class RecordingPaymentService:
         def __init__(self) -> None:
@@ -966,11 +967,19 @@ def test_payment_page_only_activates_license(
         <= THEME.space_1
     )
     assert page.findChild(QLineEdit, "paymentMacAddress") is None
-    assert page.machine_mac_input.isReadOnly()
-    assert page.machine_mac_input.text() == "F0:68:E3:C4:D1:A1"
-    page.copy_mac_button.click()
-    assert QApplication.clipboard().text() == page.machine_mac_input.text()
-    assert page.machine_status_label.isVisible()
+    assert page.findChild(QLineEdit, "machineMacInput") is None
+
+    def inspect_mac_dialog(dialog):
+        assert dialog.objectName() == "machineMacDialog"
+        assert page.machine_mac_input.isReadOnly()
+        assert page.machine_mac_input.text() == "F0:68:E3:C4:D1:A1"
+        page.copy_mac_button.click()
+        assert QApplication.clipboard().text() == page.machine_mac_input.text()
+        assert not page.machine_status_label.isHidden()
+        return QDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(QDialog, "exec", inspect_mac_dialog)
+    page.get_mac_button.click()
     assert page.findChild(QPushButton, "sendPaymentRequestButton") is None
     assert page.findChild(QLineEdit, "paymentNameInput") is None
     assert page.findChild(QLineEdit, "paymentEmailInput") is None
