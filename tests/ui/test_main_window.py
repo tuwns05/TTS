@@ -61,6 +61,9 @@ class LicensedTestService:
             mac="F0:68:E3:C4:D1:A1",
         )
 
+    def machine_mac(self) -> str:
+        return "F0:68:E3:C4:D1:A1"
+
     def saved_key(self) -> str | None:
         return "TEST-LICENSE-KEY"
 
@@ -161,6 +164,9 @@ def test_unlicensed_startup_locks_feature_pages_and_redirects_to_payment(
     monkeypatch,
 ) -> None:  # type: ignore[no-untyped-def]
     class UnlicensedService:
+        def machine_mac(self) -> str:
+            return "F0:68:E3:C4:D1:A1"
+
         def saved_key(self) -> str | None:
             return None
 
@@ -218,6 +224,9 @@ def test_model_loading_popup_blocks_app_after_activation_and_closes_when_ready(
     class UnlicensedService:
         def saved_key(self) -> str | None:
             return None
+
+        def machine_mac(self) -> str:
+            return "F0:68:E3:C4:D1:A1"
 
         def validate_saved(self) -> LicenseActivationResult:
             return LicenseActivationResult(
@@ -448,7 +457,7 @@ def test_contextual_help_buttons_open_guides(
     assert opened_guides[3][0] == "Hướng dẫn kích hoạt"
     assert "Gửi yêu cầu thanh toán" not in opened_guides[3][1]
     assert "Mã kích hoạt" in opened_guides[3][1]
-    assert "MAC" not in opened_guides[3][1]
+    assert "MAC" in opened_guides[3][1]
 
 
 def test_voice_clone_selected_file_can_be_cleared(
@@ -894,6 +903,9 @@ def test_payment_page_only_activates_license(
         def __init__(self) -> None:
             self.keys: list[str] = []
 
+        def machine_mac(self) -> str:
+            return "F0:68:E3:C4:D1:A1"
+
         def saved_key(self) -> str | None:
             return None
 
@@ -954,7 +966,11 @@ def test_payment_page_only_activates_license(
         <= THEME.space_1
     )
     assert page.findChild(QLineEdit, "paymentMacAddress") is None
-    assert page.findChild(QPushButton, "copyMacButton") is None
+    assert page.machine_mac_input.isReadOnly()
+    assert page.machine_mac_input.text() == "F0:68:E3:C4:D1:A1"
+    page.copy_mac_button.click()
+    assert QApplication.clipboard().text() == page.machine_mac_input.text()
+    assert page.machine_status_label.isVisible()
     assert page.findChild(QPushButton, "sendPaymentRequestButton") is None
     assert page.findChild(QLineEdit, "paymentNameInput") is None
     assert page.findChild(QLineEdit, "paymentEmailInput") is None

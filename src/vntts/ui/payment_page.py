@@ -6,6 +6,7 @@ from datetime import datetime
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
+    QApplication,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -70,6 +71,43 @@ class PaymentPage(QWidget):
 
         self.license_card = self._card()
         license_layout = self._card_layout(self.license_card)
+        machine_title = self._field_label("MAC", self.license_card)
+        self.machine_mac_input = QLineEdit(self.license_card)
+        self.machine_mac_input.setObjectName("machineMacInput")
+        self.machine_mac_input.setReadOnly(True)
+        self.machine_mac_input.setAccessibleName("Mã máy (MAC)")
+        self.machine_mac_input.setMaximumWidth(190)
+        self.machine_mac_input.setFixedHeight(30)
+        self.machine_mac_input.setToolTip("Gửi mã máy này khi mua bản quyền")
+        machine_title.setBuddy(self.machine_mac_input)
+        self.copy_mac_button = QPushButton("Sao chép", self.license_card)
+        self.copy_mac_button.setFixedHeight(30)
+        self.copy_mac_button.setObjectName("copyMacButton")
+        self.copy_mac_button.setAccessibleName("Sao chép mã máy MAC")
+        machine_row = QHBoxLayout()
+        machine_row.setContentsMargins(0, 0, 0, 0)
+        machine_row.setSpacing(THEME.space_2)
+        machine_row.addWidget(machine_title)
+        machine_row.addWidget(self.machine_mac_input)
+        machine_row.addWidget(self.copy_mac_button)
+        machine_row.addStretch()
+        self.machine_status_label = QLabel(self.license_card)
+        self.machine_status_label.setWordWrap(True)
+        self.machine_status_label.hide()
+        try:
+            machine_mac = self._license_service.machine_mac()
+            if not machine_mac:
+                raise ValueError("Không đọc được mã máy.")
+            self.machine_mac_input.setText(machine_mac)
+        except (ValueError, OSError, ValidationError):
+            self.machine_mac_input.setPlaceholderText("Không đọc được mã máy")
+            self.copy_mac_button.setEnabled(False)
+            self._show_status(
+                self.machine_status_label,
+                "Không thể lấy mã MAC. Vui lòng mở lại ứng dụng hoặc liên hệ hỗ trợ.",
+                "error",
+            )
+
         license_title = QLabel("Nhập mã kích hoạt", self.license_card)
         license_title.setObjectName("licenseSectionTitle")
         license_title.setProperty("role", "section")
@@ -83,6 +121,8 @@ class PaymentPage(QWidget):
         license_layout.addWidget(license_title)
         license_layout.addWidget(license_hint)
         license_layout.addWidget(self._divider(self.license_card))
+        license_layout.addLayout(machine_row)
+        license_layout.addWidget(self.machine_status_label)
 
         self.license_key_input = QLineEdit(self.license_card)
         self.license_key_input.setObjectName("licenseKeyInput")
@@ -175,6 +215,18 @@ class PaymentPage(QWidget):
 
         self.activate_button.clicked.connect(self._activate_license)
         self.payment_help_button.clicked.connect(self._show_payment_help)
+        self.copy_mac_button.clicked.connect(self._copy_machine_mac)
+
+    def _copy_machine_mac(self) -> None:
+        """Copy only the identifier so it can be sent for license issuance."""
+
+        mac = self.machine_mac_input.text()
+        if not mac:
+            return
+        QApplication.clipboard().setText(mac)
+        self._show_status(
+            self.machine_status_label, "Đã sao chép mã máy.", "success"
+        )
 
     def _show_payment_help(self) -> None:
         """Explain offline license activation."""
@@ -183,6 +235,8 @@ class PaymentPage(QWidget):
             self,
             "Hướng dẫn kích hoạt",
             "Kích hoạt ứng dụng\n"
+            "Nếu chưa có mã kích hoạt, sao chép 'Mã máy (MAC)' và gửi cho "
+            "bộ phận hỗ trợ khi mua bản quyền.\n\n"
             "1. Sao chép đầy đủ mã kích hoạt đã nhận.\n"
             "2. Dán mã vào ô 'Mã kích hoạt' và bấm 'Kích hoạt'.\n"
             "3. Khi xác thực thành công, kiểm tra thông tin gói, khách hàng "

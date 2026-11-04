@@ -115,6 +115,11 @@ class LicenseService:
         key = state.get("license_key")
         return key if isinstance(key, str) and key.strip() else None
 
+    def machine_mac(self) -> str:
+        """Return the local MAC used to bind and verify licenses."""
+
+        return self._mac_provider().upper().strip()
+
     def activate(self, key: str) -> LicenseActivationResult:
         """Verify a key and persist only the key and monotonic last-seen time."""
 
@@ -177,7 +182,7 @@ class LicenseService:
 
         payload = self._parse_payload(payload_bytes)
         license_mac = payload["mac"].upper().strip()
-        machine_mac = self._mac_provider().upper().strip()
+        machine_mac = self.machine_mac()
         if license_mac != machine_mac:
             raise LicenseValidationError(
                 "Mã kích hoạt không thuộc thiết bị này.",

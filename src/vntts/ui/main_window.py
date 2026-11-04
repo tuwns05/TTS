@@ -493,7 +493,7 @@ class MainWindow(QMainWindow):
         self.nav_clone_button.setObjectName("navCloneButton")
         self.nav_settings_button = LicenseNavButton("Cài đặt", self._sidebar)
         self.nav_settings_button.setObjectName("navSettingsButton")
-        self.nav_payment_button = QPushButton("Kích hoạt", self._sidebar)
+        self.nav_payment_button = QPushButton("Thanh toán", self._sidebar)
         self.nav_payment_button.setObjectName("navPaymentButton")
         self.nav_contact_button = QPushButton("Liên hệ", self._sidebar)
         self.nav_contact_button.setObjectName("navContactButton")
