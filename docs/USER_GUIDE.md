@@ -107,6 +107,7 @@ Sao lưu toàn bộ `data/voice_profiles` nếu cần chuyển/khôi phục hồ
 |---|---|
 | Không tìm thấy CUDA | Cập nhật driver NVIDIA hoặc chọn CPU trong **Cài đặt**. |
 | Chế độ tự động chuyển sang CPU | Xem trạng thái runtime; GPU có thể thiếu VRAM hoặc load PyTorch thất bại. |
+| Windows Application Control chặn `sea_g2p_rs.pyd` | Kiểm tra **Windows Security → App & browser control → Smart App Control** và nhật ký **Code Integrity/Operational**. Smart App Control không hỗ trợ ngoại lệ cho từng tệp; cần thư viện có chữ ký hợp lệ, hoặc cân nhắc tắt tính năng theo hướng dẫn của Microsoft. Nếu máy do tổ chức quản lý, liên hệ quản trị viên. Lỗi xảy ra khi nạp SDK trên cả CPU lẫn GPU. |
 | App báo thiếu/sai model | Cài lại artifact đầy đủ; không tách riêng EXE khỏi thư mục `SI-TTS`. |
 | Không phát được audio | Kiểm tra thiết bị output mặc định và thử mở lại app. |
 | PDF không có nội dung | Chạy OCR bằng công cụ khác rồi nhập lại PDF/TXT. |

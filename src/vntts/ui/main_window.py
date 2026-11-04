@@ -586,6 +586,7 @@ class MainWindow(QMainWindow):
             settings.application.phone,
             settings.application.support_email,
             settings.application.website,
+            settings.application.technical_support_phone,
         )
         self.active_model_card.set_hardware(view_model.hardware)
         self._profiles_changed(self.voice_clone_page.profiles)

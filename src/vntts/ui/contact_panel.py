@@ -96,10 +96,10 @@ class ContactPage(QWidget):
             "website",
             "contactWebsite",
         )
-        support_cell, self.support_email_label = self._detail_cell(
+        support_cell, self.technical_support_phone_label = self._detail_cell(
             "Hỗ trợ kỹ thuật",
             "support",
-            "contactTechnicalSupportEmail",
+            "contactTechnicalSupportPhone",
         )
         details.addWidget(address_cell, 0, 0, 1, 3)
         details.addWidget(self._divider(), 1, 0, 1, 3)
@@ -202,6 +202,7 @@ class ContactPage(QWidget):
         phone: str,
         support_email: str,
         website: str,
+        technical_support_phone: str,
     ) -> None:
         """Refresh displayed values from ``Settings.application``."""
 
@@ -210,7 +211,11 @@ class ContactPage(QWidget):
         self._set_link(self.phone_label, phone, "tel")
         self._set_link(self.email_label, support_email, "mailto")
         self._set_link(self.website_label, website, "website")
-        self._set_link(self.support_email_label, support_email, "mailto")
+        self._set_link(
+            self.technical_support_phone_label,
+            technical_support_phone,
+            "tel",
+        )
 
     def _detail_cell(
         self,

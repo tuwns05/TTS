@@ -12,7 +12,7 @@ from concurrent.futures import CancelledError
 from pathlib import Path
 from threading import Event
 from typing import Protocol
-
+    
 import numpy as np
 from loguru import logger
 
@@ -85,6 +85,22 @@ def _sdk_is_installed() -> bool:
         return importlib.util.find_spec("vieneu") is not None
     except (ImportError, ValueError):
         return False
+
+
+def _application_control_error(exc: Exception) -> EngineLoadError | None:
+    """Explain a Windows policy block without blaming the selected device."""
+    current: BaseException | None = exc
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if "an application control policy has blocked this file" in str(current).lower():
+            return EngineLoadError(
+                "Windows Application Control đã chặn thư viện sea_g2p_rs.pyd "
+                "của VieNeu. Hãy kiểm tra Smart App Control hoặc liên hệ quản trị viên "
+                "nếu máy được quản lý; chọn CPU cũng không khắc phục lỗi này."
+            )
+        current = current.__cause__ or current.__context__
+    return None
 
 
 def _cuda_available() -> bool:
@@ -484,6 +500,9 @@ class VieNeuV3Engine(BaseTTSEngine):
                 close_method = getattr(runtime, "close", None)
                 if callable(close_method):
                     close_method()
+                policy_error = _application_control_error(exc)
+                if policy_error is not None:
+                    raise policy_error from exc
                 if attempt_device == "cuda" and len(attempts) > 1:
                     gpu_failure = exc
                     logger.opt(exception=exc).warning(

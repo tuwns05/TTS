@@ -76,7 +76,7 @@ class VoiceClonePage(QWidget):
         page_header.addWidget(self.voice_clone_help_button)
         description = QLabel(
             "Tạo hồ sơ giọng từ một đoạn ghi âm ngắn. Mẫu âm thanh chỉ dùng để "
-            "trích xuất đặc trưng giọng và không được lưu lại.",
+            "trích xuất đặc trưng giọng và không được lưu lại ̣̣ (Chức năng chỉ hoạt động khi đang chạy trên GPU với máy có GPU tương thích).",   
             self,
         )
         description.setProperty("role", "secondary")

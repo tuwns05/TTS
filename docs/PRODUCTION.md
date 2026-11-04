@@ -153,7 +153,7 @@ Crash, treo UI, checksum sai, model tải mạng, thiếu preset voice, export h
 - Thay `TEST_LICENSE_PUBLIC_KEY` bằng public key production; private key không được nằm trong source, build machine log hoặc artifact.
 - Thay endpoint localhost bằng HTTPS production hoặc chủ động tắt payment trong build không có backend.
 - Chốt contract backend: server phải tự xác định giá; không tin `price` do client gửi.
-- Điền chính xác `manufacturer`, `address`, `phone`, `website`, `support_email`, `copyright`.
+- Điền chính xác `manufacturer`, `address`, `phone`, `website`, `support_email`, `technical_support_phone`, `copyright`.
 - Đồng bộ version ở `pyproject.toml`, `scripts/build_production.ps1` và `packaging/windows/installer.iss`.
 
 ### Pháp lý và supply chain

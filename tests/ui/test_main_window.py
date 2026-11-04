@@ -1042,11 +1042,10 @@ def test_contact_page_displays_company_details(
     )
     assert (
         window.contact_page.company_name_label.text()
-        == "CÔNG TY CỔ PHẦN ĐẦU TƯ GIẢI PHÁP HỮU ÍCH"
+        == settings.application.manufacturer
     )
     assert window.contact_page.address_label.text() == (
-        "Lô 17, Khu nhà liền kề Chung cư Simona, đường Hoàng Văn Thụ, "
-        "Phường Quy Nhơn Nam, Tỉnh Gia Lai"
+        settings.application.address
     )
     assert settings.application.phone in window.contact_page.phone_label.text()
     assert (
@@ -1054,10 +1053,7 @@ def test_contact_page_displays_company_details(
         in window.contact_page.email_label.text()
     )
     assert settings.application.website in window.contact_page.website_label.text()
-    assert (
-        settings.application.support_email
-        in window.contact_page.support_email_label.text()
-    )
+    assert window.contact_page.technical_support_phone_label.text() == "Chưa cập nhật"
     assert not window.contact_page.license_link_label.isVisible()
     assert (
         window.sidebar_copyright_label.text()
@@ -1095,10 +1091,15 @@ def test_contact_page_displays_company_details(
         "0123 456 789",
         "support@example.com",
         "example.com",
+        "0987 654 321",
     )
 
     assert 'href="tel:0123%20456%20789"' in window.contact_page.phone_label.text()
     assert 'href="mailto:support@example.com"' in window.contact_page.email_label.text()
+    assert (
+        'href="tel:0987%20654%20321"'
+        in window.contact_page.technical_support_phone_label.text()
+    )
     assert 'href="https://example.com"' in window.contact_page.website_label.text()
     assert window.contact_page.phone_label.openExternalLinks()
     assert window.contact_page.email_label.openExternalLinks()

@@ -255,18 +255,8 @@ class PaymentPage(QWidget):
         QMessageBox.information(
             self,
             "Hướng dẫn kích hoạt",
-            "Kích hoạt ứng dụng\n"
-            "Nếu chưa có mã kích hoạt, bấm 'Mã MAC', sao chép MAC và gửi cho "
-            "bộ phận hỗ trợ khi mua bản quyền.\n\n"
-            "1. Sao chép đầy đủ mã kích hoạt đã nhận.\n"
-            "2. Dán mã vào ô 'Mã kích hoạt' và bấm 'Kích hoạt'.\n"
-            "3. Khi xác thực thành công, kiểm tra thông tin gói, khách hàng "
-            "và ngày hết hạn. Trang 'Tạo giọng nói' và 'Nhân bản giọng' sẽ "
-            "được mở khóa.\n\n"
             "Nếu mã báo hết hạn hoặc không hợp lệ, hãy kiểm tra lại mã và "
-            "liên hệ bộ phận hỗ trợ. Không thay đổi ngày giờ hệ "
-            "thống trong quá trình sử dụng license.",
-            QMessageBox.StandardButton.Ok,
+            "liên hệ bộ phận hỗ trợ.",
         )
 
     def apply_saved_license(self, result: LicenseActivationResult) -> None:

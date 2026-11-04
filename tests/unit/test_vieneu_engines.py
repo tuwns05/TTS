@@ -220,6 +220,36 @@ def test_vieneu_v3_auto_falls_back_to_onnx_cpu_when_gpu_load_fails(
     assert engine.runtime_info.fallback_reason is not None
 
 
+@pytest.mark.parametrize("device", ["auto", "cuda", "cpu"])
+def test_vieneu_v3_reports_application_control_block(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    device: str,
+) -> None:
+    model_path = tmp_path / "vieneu-v3"
+    tokenizer_path = model_path / "moss-tokenizer"
+    tokenizer_path.mkdir(parents=True)
+    monkeypatch.setattr(vieneu_module, "_cuda_available", lambda: True)
+    calls: list[str] = []
+
+    def blocked_factory(**kwargs: object) -> _VieNeuRuntime:
+        calls.append(str(kwargs["device"]))
+        raise ImportError(
+            "DLL load failed while importing sea_g2p_rs: "
+            "An Application Control policy has blocked this file."
+        )
+
+    engine = VieNeuV3Engine(
+        model_path,
+        tokenizer_path=tokenizer_path,
+        sdk_factory=blocked_factory,
+    )
+
+    with pytest.raises(EngineLoadError, match="Windows Application Control.*sea_g2p_rs"):
+        engine.load(device)
+    assert calls == ["cpu" if device == "cpu" else "cuda"]
+
+
 def test_vieneu_v3_development_can_use_official_repository() -> None:
     calls: list[dict[str, object]] = []
 

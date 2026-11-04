@@ -23,6 +23,7 @@ _SAFE_DEFAULTS: dict[str, object] = {
         "phone": "",
         "website": "",
         "support_email": "",
+        "technical_support_phone": "",
         "copyright": "",
     },
     "paths": {
@@ -70,6 +71,7 @@ class ApplicationSettings:
     manufacturer: str = ""
     website: str = ""
     support_email: str = ""
+    technical_support_phone: str = ""
     copyright: str = ""
     address: str = ""
     phone: str = ""
@@ -301,6 +303,10 @@ def load_settings(config_path: Path | None = None, *, create_directories: bool =
             website=_optional_text(app.get("website"), "application.website"),
             support_email=_optional_text(
                 app.get("support_email"), "application.support_email"
+            ),
+            technical_support_phone=_optional_text(
+                app.get("technical_support_phone"),
+                "application.technical_support_phone",
             ),
             copyright=_optional_text(
                 app.get("copyright"), "application.copyright"

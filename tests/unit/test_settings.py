@@ -100,6 +100,7 @@ application:
   phone: ""
   website: "  example.com  "
   support_email: "  support@example.com  "
+  technical_support_phone: "  0987 654 321  "
   copyright: ""
 """.strip(),
         encoding="utf-8",
@@ -113,6 +114,7 @@ application:
     assert result.application.phone == ""
     assert result.application.website == "example.com"
     assert result.application.support_email == "support@example.com"
+    assert result.application.technical_support_phone == "0987 654 321"
     assert result.application.copyright == ""
 
 
